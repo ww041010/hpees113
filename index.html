@@ -31,10 +31,12 @@
     .screen {
       background: #1a202c; color: #fff; border-radius: 12px; padding: 14px 18px; text-align: right; min-height: 90px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 14px;
     }
-    .screen-status { font-size: 15px; color: #a0aec0; text-align: left; font-weight: 700; display: flex; justify-content: space-between; }
+    .screen-status { font-size: 15px; color: #a0aec0; text-align: left; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
     .student-name-tag { color: #63b3ed; font-size: 18px; font-weight: 900; }
     .screen-val { font-size: 34px; font-weight: 900; color: #38b2ac; letter-spacing: 1px; }
-    
+    .cancel-btn-tag { font-size: 12px; color: #feb2b2; cursor: pointer; border: 1px solid #e53e3e; padding: 2px 6px; border-radius: 4px; display: none; }
+    .cancel-btn-tag:hover { background: #e53e3e; color: #fff; }
+
     .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     button.num-btn, button.btn-special, button.btn-clear, button.btn-action {
       height: 54px; font-size: 22px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; user-select: none; transition: transform 0.05s;
@@ -44,7 +46,8 @@
     button.btn-special { background: #feebc8; color: #c05621; font-size: 18px; font-weight: 900; }
     button.btn-special:active { background: #fbd38d; transform: scale(0.96); }
     button.btn-action { background: #3182ce; color: #fff; font-size: 18px; font-weight: 900; grid-column: span 3; margin-top: 4px; }
-    button.btn-clear { background: #fed7d7; color: #9b2c2c; font-size: 18px; }
+    button.btn-clear { background: #fed7d7; color: #9b2c2c; font-size: 17px; font-weight: 900; }
+    button.btn-clear:active { background: #feb2b2; transform: scale(0.96); }
 
     /* 未登記提醒區 */
     .alert-card { background: #fffaf0; border: 1px solid #feebc8; border-radius: 14px; padding: 14px; }
@@ -115,7 +118,10 @@
     <div class="screen">
       <div class="screen-status">
         <span id="status-text">步驟 1：請輸入【座號】</span>
-        <span id="name-display" class="student-name-tag"></span>
+        <div>
+          <span id="name-display" class="student-name-tag"></span>
+          <span id="cancel-btn-tag" class="cancel-btn-tag" onclick="resetToStepOne()">✕ 重選座號</span>
+        </div>
       </div>
       <div id="screen-val" class="screen-val">0 <span style="font-size: 16px; color: #a0aec0;">號</span></div>
     </div>
@@ -135,7 +141,8 @@
       <button class="num-btn" onclick="pressNum('0')">0</button>
       <button id="btn-hurt" class="btn-special" onclick="setSpecialStatus('傷')">傷</button>
       
-      <button class="btn-clear" onclick="clearInput()">C</button>
+      <!-- C 按鈕改為 返回/重選 功能 -->
+      <button id="btn-cancel" class="btn-clear" onclick="handleCancelBtn()">返回</button>
       <button class="btn-clear" onclick="backspace()">⌫</button>
       <button id="btn-action" class="btn-action" onclick="handleAction()">下一步 ➔ 輸入圈數</button>
     </div>
@@ -366,6 +373,8 @@
   const weekSelect = document.getElementById('week-select');
   const modalWeekSelect = document.getElementById('modal-week-select');
   const tableHead = document.getElementById('table-head');
+  const cancelBtnTag = document.getElementById('cancel-btn-tag');
+  const btnCancel = document.getElementById('btn-cancel');
 
   for (let i = 1; i <= TOTAL_WEEKS; i++) {
     const th = document.createElement('th');
@@ -440,16 +449,37 @@
     document.getElementById('screen-val').innerHTML = `<span style="color:#f6ad55;">【${type}】</span>`;
   }
 
-  function clearInput() {
-    if (currentStep === 1) {
+  // 返回重選／清空處理
+  function handleCancelBtn() {
+    if (currentStep === 2) {
+      // 步驟 2 按返回：直接回到步驟 1 重新選人
+      resetToStepOne();
+    } else {
+      // 步驟 1 按清除：清空目前打的座號
       currentSeat = '';
       document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
       document.getElementById('name-display').textContent = '';
-    } else {
-      currentVal = '';
-      currentStatus = '';
-      document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">圈</span>`;
     }
+  }
+
+  function resetToStepOne() {
+    currentStep = 1;
+    currentSeat = '';
+    currentVal = '';
+    currentStatus = '';
+    document.getElementById('status-text').textContent = '步驟 1：請輸入【座號】';
+    document.getElementById('name-display').textContent = '';
+    document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
+    cancelBtnTag.style.display = 'none';
+    
+    const actionBtn = document.getElementById('btn-action');
+    actionBtn.textContent = '下一步 ➔ 輸入圈數';
+    actionBtn.style.background = '#3182ce';
+    btnCancel.textContent = '清除';
+  }
+
+  function clearInput() {
+    handleCancelBtn();
   }
 
   function backspace() {
@@ -492,8 +522,10 @@
         return;
       }
       currentStep = 2;
-      statusText.textContent = `【${s} 號 ${STUDENT_MAP[s]}】輸入圈數或假/傷：`;
+      statusText.textContent = `【${s} 號 ${STUDENT_MAP[s]}】`;
       document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">圈</span>`;
+      cancelBtnTag.style.display = 'inline-block';
+      btnCancel.textContent = '返回';
       actionBtn.textContent = '✔ 確認送出';
       actionBtn.style.background = '#38a169';
     } else {
@@ -519,15 +551,8 @@
       fullDB[currentSeason][s][activeWeek] = { val: recordValue, note: existing.note || '' };
       saveFullDB(fullDB);
 
-      currentStep = 1;
-      currentSeat = '';
-      currentVal = '';
-      currentStatus = '';
-      statusText.textContent = '步驟 1：請輸入【座號】';
-      document.getElementById('name-display').textContent = '';
-      document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
-      actionBtn.textContent = '下一步 ➔ 輸入圈數';
-      actionBtn.style.background = '#3182ce';
+      // 儲存完成後回到步驟 1
+      resetToStepOne();
     }
   }
 
