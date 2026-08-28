@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>體育圈數登記系統</title>
+  
+  <!-- 引入 Google 粉圓體 (Zen Maru Gothic) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+
+  <style>
+    * { 
+      box-sizing: border-box; 
+      font-family: 'Zen Maru Gothic', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
+    }
+    body { background: #f0f4f8; margin: 0; padding: 16px; color: #2d3748; display: flex; flex-direction: column; align-items: center; }
+    .container { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
+    
+    /* 頂部列 */
+    .top-bar {
+      background: #fff; padding: 12px 16px; border-radius: 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex-wrap: wrap; gap: 8px;
+    }
+    select, button.btn-sub, input[type="date"], input[type="text"] { 
+      padding: 6px 12px; border-radius: 8px; border: 1px solid #cbd5e0; font-size: 14px; background: #edf2f7; font-weight: 700;
+    }
+
+    /* 連線狀態標籤 */
+    .sync-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 900; background: #c6f6d5; color: #22543d; }
+
+    /* 計算機主體 */
+    .calc-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .screen {
+      background: #1a202c; color: #fff; border-radius: 12px; padding: 14px 18px; text-align: right; min-height: 90px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 14px;
+    }
+    .screen-status { font-size: 15px; color: #a0aec0; text-align: left; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+    .student-name-tag { color: #63b3ed; font-size: 18px; font-weight: 900; }
+    .screen-val { font-size: 34px; font-weight: 900; color: #38b2ac; letter-spacing: 1px; }
+    .cancel-btn-tag { font-size: 12px; color: #feb2b2; cursor: pointer; border: 1px solid #e53e3e; padding: 2px 6px; border-radius: 4px; display: none; }
+    .cancel-btn-tag:hover { background: #e53e3e; color: #fff; }
+
+    .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    button.num-btn, button.btn-special, button.btn-clear, button.btn-action {
+      height: 54px; font-size: 22px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; user-select: none; transition: transform 0.05s;
+    }
+    button.num-btn { background: #edf2f7; color: #2d3748; }
+    button.num-btn:active { background: #e2e8f0; transform: scale(0.96); }
+    button.btn-special { background: #feebc8; color: #c05621; font-size: 18px; font-weight: 900; }
+    button.btn-special:active { background: #fbd38d; transform: scale(0.96); }
+    button.btn-action { background: #3182ce; color: #fff; font-size: 18px; font-weight: 900; grid-column: span 3; margin-top: 4px; }
+    button.btn-clear { background: #fed7d7; color: #9b2c2c; font-size: 17px; font-weight: 900; }
+    button.btn-clear:active { background: #feb2b2; transform: scale(0.96); }
+
+    /* 未登記提醒區 */
+    .alert-card { background: #fffaf0; border: 1px solid #feebc8; border-radius: 14px; padding: 14px; }
+    .alert-title { font-size: 15px; font-weight: 900; color: #c05621; margin-bottom: 8px; }
+    .missing-tags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 110px; overflow-y: auto; }
+    .missing-tag {
+      background: #fff; border: 1px solid #cbd5e0; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .missing-tag:hover { background: #edf2f7; border-color: #a0aec0; }
+
+    /* 老師總表 */
+    .report-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
+    .report-header h2 { font-size: 16px; margin: 0; color: #2d3748; font-weight: 900; }
+    .btn-export { background: #38a169; color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 700; }
+    
+    .table-box { overflow-x: auto; max-height: 480px; border: 1px solid #e2e8f0; border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; white-space: nowrap; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; font-weight: 700; }
+    th { background: #f7fafc; position: sticky; top: 0; color: #4a5568; z-index: 2; font-weight: 900; }
+    th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 1; }
+    th.sticky-col-2, td.sticky-col-2 { position: sticky; left: 40px; background: #fff; z-index: 1; }
+    th.sticky-col, th.sticky-col-2 { z-index: 3; background: #edf2f7; }
+    
+    .status-leave { color: #d69e2e; font-weight: 900; background: #fefcbf; padding: 2px 6px; border-radius: 6px; }
+    .status-hurt { color: #e53e3e; font-weight: 900; background: #fed7d7; padding: 2px 6px; border-radius: 6px; }
+    .term-total-col { font-weight: 900; color: #dd6b20; font-size: 14px; }
+    .annual-total-col { font-weight: 900; color: #805ad5; font-size: 14px; background: #faf5ff; }
+    .btn-edit { background: #edf2f7; border: 1px solid #cbd5e0; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; }
+    .btn-edit:hover { background: #e2e8f0; }
+
+    .note-dot { display: inline-block; font-size: 11px; vertical-align: super; cursor: help; margin-left: 2px; }
+
+    /* 彈窗 */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; padding: 16px; z-index: 99; }
+    .modal-content { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 380px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
+    .modal-field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+    .modal-field label { font-size: 13px; font-weight: 900; color: #4a5568; }
+    .modal-field input, .modal-field select { padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; background: #fff; font-weight: 700; }
+    .quick-batch-box { background: #edf2f7; border-radius: 10px; padding: 10px; margin-bottom: 14px; }
+    .quick-btn { background: #fff; border: 1px solid #cbd5e0; padding: 6px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 700; }
+    .quick-btn:hover { background: #e2e8f0; }
+    .btn-group { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .btn-delete { background: #e53e3e; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; }
+  </style>
+
+  <!-- 引入 Firebase SDK (已配置您的專屬金鑰) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteField } 
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
+      authDomain: "runn-b1d9d.firebaseapp.com",
+      projectId: "runn-b1d9d",
+      storageBucket: "runn-b1d9d.firebasestorage.app",
+      messagingSenderId: "771265714788",
+      appId: "1:771265714788:web:ce91cb04298c61fe8d9d71",
+      measurementId: "G-E1H3MDZY1C"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.db = db;
+    window.setDoc = setDoc;
+    window.doc = doc;
+    window.onSnapshot = onSnapshot;
+    window.updateDoc = updateDoc;
+    window.deleteField = deleteField;
+
+    // 監聽雲端開學日設定
+    onSnapshot(doc(db, "settings", "terms"), (docSnap) => {
+      if (docSnap.exists()) {
+        termSettings = docSnap.data();
+        localStorage.setItem('running_term_settings', JSON.stringify(termSettings));
+      }
+      autoDetected = detectCurrentSeasonAndWeek();
+      currentSeason = autoDetected.season;
+      initWeekOptions();
+      refreshUI();
+    });
+
+    // 監聽雲端圈數紀錄
+    onSnapshot(doc(db, "running_records", "all_seasons"), async (docSnap) => {
+      if (docSnap.exists()) {
+        cloudDB = docSnap.data();
+      } else {
+        cloudDB = {};
+      }
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      
+      // 自動檢查是否有舊版 LocalStorage 資料需要搬移上雲端
+      await checkAndMigrateLocalData();
+      
+      refreshUI();
+    }, (error) => {
+      console.error(error);
+      document.getElementById('sync-status').textContent = '🔴 連線異常';
+    });
+
+    // ─── 舊資料自動補上傳功能 ───
+    async function checkAndMigrateLocalData() {
+      // 檢查舊版是否有資料
+      const oldMultiTerm = localStorage.getItem('running_tracker_multi_term_db');
+      const oldSingleTerm = localStorage.getItem('running_tracker_db_57') || localStorage.getItem('running_records');
+      
+      let uploadPayload = null;
+
+      if (oldMultiTerm) {
+        try {
+          const parsed = JSON.parse(oldMultiTerm);
+          if (Object.keys(parsed).length > 0) uploadPayload = parsed;
+        } catch(e) {}
+      } else if (oldSingleTerm) {
+        try {
+          const parsed = JSON.parse(oldSingleTerm);
+          if (Object.keys(parsed).length > 0) {
+            uploadPayload = { autumn: parsed };
+          }
+        } catch(e) {}
+      }
+
+      if (uploadPayload) {
+        try {
+          await setDoc(doc(db, "running_records", "all_seasons"), uploadPayload, { merge: true });
+          // 上傳成功後清空本地標記，避免重複上傳
+          localStorage.removeItem('running_tracker_multi_term_db');
+          localStorage.removeItem('running_tracker_db_57');
+          localStorage.removeItem('running_records');
+          console.log("舊資料已自動無痛同步至雲端！");
+        } catch (err) {
+          console.error("舊資料同步失敗:", err);
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+
+<div class="container">
+  <!-- 頂部列：學季選擇與設定 -->
+  <div class="top-bar">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <select id="season-select" onchange="userChangeSeason()" style="color:#2b6cb0;">
+        <option value="autumn">🍂 秋學季</option>
+        <option value="winter">❄️ 冬學季</option>
+        <option value="spring">🌸 春學季</option>
+        <option value="summer">☀️ 夏學季</option>
+      </select>
+      <select id="week-select" onchange="userChangeWeek()"></select>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span id="sync-status" class="sync-badge">🟡 連線中...</span>
+      <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
+    </div>
+  </div>
+
+  <!-- 計算機卡片 -->
+  <div class="calc-card">
+    <div class="screen">
+      <div class="screen-status">
+        <span id="status-text">步驟 1：請輸入【座號】</span>
+        <div>
+          <span id="name-display" class="student-name-tag"></span>
+          <span id="cancel-btn-tag" class="cancel-btn-tag" onclick="resetToStepOne()">✕ 重選座號</span>
+        </div>
+      </div>
+      <div id="screen-val" class="screen-val">0 <span style="font-size: 16px; color: #a0aec0;">號</span></div>
+    </div>
+
+    <div class="keypad">
+      <button class="num-btn" onclick="pressNum('1')">1</button>
+      <button class="num-btn" onclick="pressNum('2')">2</button>
+      <button class="num-btn" onclick="pressNum('3')">3</button>
+      <button class="num-btn" onclick="pressNum('4')">4</button>
+      <button class="num-btn" onclick="pressNum('5')">5</button>
+      <button class="num-btn" onclick="pressNum('6')">6</button>
+      <button class="num-btn" onclick="pressNum('7')">7</button>
+      <button class="num-btn" onclick="pressNum('8')">8</button>
+      <button class="num-btn" onclick="pressNum('9')">9</button>
+      
+      <button id="btn-leave" class="btn-special" onclick="setSpecialStatus('假')">假</button>
+      <button class="num-btn" onclick="pressNum('0')">0</button>
+      <button id="btn-hurt" class="btn-special" onclick="setSpecialStatus('傷')">傷</button>
+      
+      <button id="btn-cancel" class="btn-clear" onclick="handleCancelBtn()">清除</button>
+      <button class="btn-clear" onclick="backspace()">⌫</button>
+      <button id="btn-action" class="btn-action" onclick="handleAction()">下一步 ➔ 輸入圈數</button>
+    </div>
+  </div>
+
+  <!-- 未登記名單提醒 -->
+  <div class="alert-card">
+    <div class="alert-title">
+      ⚠️ <span id="current-badge-label">秋學季 第 1 週</span> 尚未登記 (<span id="unrecorded-count">0</span> / 57 人)
+    </div>
+    <div id="missing-list" class="missing-tags"></div>
+  </div>
+
+  <!-- 老師總表 -->
+  <div class="report-card">
+    <div class="report-header">
+      <h2 id="report-title">📋 圈數累計總表</h2>
+      <div style="display:flex; gap:6px;">
+        <button class="btn-export" onclick="exportTermCSV()">匯出當季</button>
+        <button class="btn-export" style="background:#805ad5;" onclick="exportAnnualCSV()">匯出四季總成績</button>
+      </div>
+    </div>
+    <div class="table-box">
+      <table>
+        <thead>
+          <tr id="table-head">
+            <th class="sticky-col">座號</th>
+            <th class="sticky-col-2">姓名</th>
+            <th style="color:#dd6b20;">當季加總</th>
+            <th style="color:#805ad5;">四季累計</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 學季開學日設定彈窗 -->
+<div id="setting-modal" class="modal">
+  <div class="modal-content">
+    <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight:900;">⚙️ 設定各學季開學日</h3>
+    <div class="modal-field">
+      <label>🍂 秋學季 開學日：</label>
+      <input type="date" id="start-date-autumn">
+    </div>
+    <div class="modal-field">
+      <label>❄️ 冬學季 開學日：</label>
+      <input type="date" id="start-date-winter">
+    </div>
+    <div class="modal-field">
+      <label>🌸 春學季 開學日：</label>
+      <input type="date" id="start-date-spring">
+    </div>
+    <div class="modal-field">
+      <label>☀️ 夏學季 開學日：</label>
+      <input type="date" id="start-date-summer">
+    </div>
+    <div class="btn-group">
+      <button class="btn-sub" onclick="closeSettingModal()">取消</button>
+      <button class="btn-export" onclick="saveSettings()">儲存並同步至雲端</button>
+    </div>
+  </div>
+</div>
+
+<!-- 修改／快速設定／狀況補充彈窗 -->
+<div id="edit-modal" class="modal">
+  <div class="modal-content">
+    <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight:900;">✏️ 修改／狀況補充</h3>
+    <div class="modal-field">
+      <label>學生：</label>
+      <div id="modal-student-info" style="font-weight: 900; color: #2b6cb0; font-size: 15px;"></div>
+    </div>
+
+    <div class="quick-batch-box">
+      <div style="font-size: 12px; font-weight: 900; color: #4a5568; margin-bottom: 6px;">⚡ 一鍵填寫本季正式週 (1~10 週)：</div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button class="quick-btn" style="color:#c05621; border-color:#fbd38d;" onclick="batchSetAllWeeks('假')">🏖️ 10週皆請假</button>
+        <button class="quick-btn" style="color:#c53030; border-color:#feb2b2;" onclick="batchSetAllWeeks('傷')">🩹 10週皆受傷</button>
+        <button class="quick-btn" style="color:#718096;" onclick="batchClearAllWeeks()">🧹 清空當季</button>
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <label>單週選擇：</label>
+      <select id="modal-week-select" onchange="onModalWeekChange()"></select>
+    </div>
+    <div class="modal-field">
+      <label>設定狀態或圈數：</label>
+      <select id="modal-type-select" onchange="toggleModalInput()">
+        <option value="laps">正常跑圈</option>
+        <option value="假">請假 (假)</option>
+        <option value="傷">受傷 (傷)</option>
+      </select>
+      <input type="number" id="modal-laps-input" placeholder="輸入圈數" min="0" style="margin-top: 6px;">
+    </div>
+    
+    <div class="modal-field">
+      <label>📝 狀況補充／備註：</label>
+      <input type="text" id="modal-note-input" placeholder="例如：右腳踝微扭、公假出賽、慢走2圈等">
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-delete" onclick="deleteCurrentWeekRecord()">刪除該週</button>
+      <button class="btn-sub" onclick="closeEditModal()">關閉</button>
+      <button class="btn-export" onclick="saveModalEdit()">儲存修改</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOTAL_WEEKS = 10;
+  const SEASONS = {
+    autumn: "秋學季",
+    winter: "冬學季",
+    spring: "春學季",
+    summer: "夏學季"
+  };
+
+  const STUDENT_LIST = [
+    { seat: 1, name: "鄭晴勻" }, { seat: 2, name: "曾暄勻" }, { seat: 3, name: "陳宥熹" },
+    { seat: 4, name: "王楷彤" }, { seat: 5, name: "劉諭衡" }, { seat: 6, name: "張簢薇" },
+    { seat: 7, name: "林佑奕" }, { seat: 8, name: "黃姿穎" }, { seat: 9, name: "戴廷聿" },
+    { seat: 10, name: "黃泊寧" }, { seat: 11, name: "王樂穎" }, { seat: 12, name: "徐軒宇" },
+    { seat: 13, name: "高筑甄" }, { seat: 14, name: "陳律安" }, { seat: 15, name: "楊子樂" },
+    { seat: 16, name: "韓岱穎" }, { seat: 17, name: "李贊民" }, { seat: 18, name: "陳暘" },
+    { seat: 19, name: "潘宜彤" }, { seat: 20, name: "李星燁" }, { seat: 21, name: "林楷翔" },
+    { seat: 22, name: "陳語珊" }, { seat: 23, name: "廖宇澄" }, { seat: 24, name: "周宥昕" },
+    { seat: 25, name: "馮艾玫" }, { seat: 26, name: "朱軒廷" }, { seat: 27, name: "林羽澄" },
+    { seat: 28, name: "陳柏元" }, { seat: 29, name: "彭尹樂" }, { seat: 30, name: "葉綠晴" },
+    { seat: 31, name: "賴以恆" }, { seat: 32, name: "王寶靚" }, { seat: 33, name: "蕭向澄" },
+    { seat: 34, name: "侯守為" }, { seat: 35, name: "余昕儀" }, { seat: 36, name: "宋元睿" },
+    { seat: 38, name: "吳承霖" }, { seat: 39, name: "楊芷恩" }, { seat: 40, name: "楊皓淵" },
+    { seat: 41, name: "賴奕澄" }, { seat: 42, name: "傅咏沂" }, { seat: 43, name: "高藝恆" },
+    { seat: 44, name: "王胤伯" }, { seat: 45, name: "黃勤璦" }, { seat: 46, name: "張稷翰" },
+    { seat: 47, name: "林妍馨" }, { seat: 48, name: "帥寀雯" }, { seat: 49, name: "黃亦德" },
+    { seat: 50, name: "王道勤" }, { seat: 51, name: "鄭青穎" }, { seat: 52, name: "郭恆瑞" },
+    { seat: 53, name: "黃睦夏" }, { seat: 54, name: "黃柔尹" }, { seat: 55, name: "張尹菲" },
+    { seat: 56, name: "廖至遠" }, { seat: 57, name: "周紹閎" }, { seat: 58, name: "曾歆棠" }
+  ];
+
+  const STUDENT_MAP = {};
+  STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
+
+  let cloudDB = {};
+
+  function getTermSettings() {
+    const saved = localStorage.getItem('running_term_settings');
+    if (saved) return JSON.parse(saved);
+    return {
+      startDates: {
+        autumn: "2026-08-21",
+        winter: "2026-11-16",
+        spring: "2027-02-22",
+        summer: "2027-05-17"
+      }
+    };
+  }
+
+  let termSettings = getTermSettings();
+
+  function getMondayOfDate(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    date.setDate(diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  function calculateWeekForSeason(seasonKey) {
+    const startDateStr = termSettings.startDates[seasonKey];
+    if (!startDateStr) return 0;
+    
+    const startDay = new Date(startDateStr + "T00:00:00");
+    const now = new Date();
+    
+    const startMonday = getMondayOfDate(startDay);
+    const currentMonday = getMondayOfDate(now);
+    
+    const diffTime = currentMonday.getTime() - startMonday.getTime();
+    if (diffTime < 0) return 0;
+    
+    const diffWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+    return Math.min(Math.max(diffWeeks, 0), TOTAL_WEEKS);
+  }
+
+  function detectCurrentSeasonAndWeek() {
+    const now = new Date();
+    const nowMonday = getMondayOfDate(now);
+    const seasonKeys = ["autumn", "winter", "spring", "summer"];
+    let selectedSeason = "autumn";
+
+    const dates = seasonKeys.map(k => ({
+      key: k,
+      monday: getMondayOfDate(new Date(termSettings.startDates[k] + "T00:00:00"))
+    })).sort((a, b) => a.monday - b.monday);
+
+    if (nowMonday < dates[0].monday) {
+      selectedSeason = dates[0].key;
+    } else {
+      for (let i = 0; i < dates.length; i++) {
+        if (nowMonday >= dates[i].monday) {
+          selectedSeason = dates[i].key;
+        }
+      }
+    }
+
+    return { season: selectedSeason, weekNum: calculateWeekForSeason(selectedSeason) };
+  }
+
+  let autoDetected = detectCurrentSeasonAndWeek();
+  let currentSeason = autoDetected.season;
+  let activeWeekNum = autoDetected.weekNum;
+  let activeWeek = `第 ${activeWeekNum} 週`;
+
+  let currentStep = 1; 
+  let currentSeat = '';
+  let currentVal = '';
+  let currentStatus = '';
+  let editingSeat = null;
+
+  const seasonSelect = document.getElementById('season-select');
+  const weekSelect = document.getElementById('week-select');
+  const modalWeekSelect = document.getElementById('modal-week-select');
+  const tableHead = document.getElementById('table-head');
+  const cancelBtnTag = document.getElementById('cancel-btn-tag');
+  const btnCancel = document.getElementById('btn-cancel');
+
+  for (let i = 1; i <= TOTAL_WEEKS; i++) {
+    const th = document.createElement('th');
+    th.textContent = `W${i}`;
+    tableHead.appendChild(th);
+  }
+
+  function initWeekOptions() {
+    seasonSelect.value = currentSeason;
+    weekSelect.innerHTML = '';
+    modalWeekSelect.innerHTML = '';
+    
+    activeWeekNum = calculateWeekForSeason(currentSeason);
+
+    for (let i = 0; i <= TOTAL_WEEKS; i++) {
+      const opt = document.createElement('option');
+      opt.value = `第 ${i} 週`;
+      let label = `第 ${i} 週`;
+      if (i === 0) label += " (準備週/不計)";
+      if (i === activeWeekNum) label += " ⭐ (本週)";
+      opt.textContent = label;
+      weekSelect.appendChild(opt);
+
+      const modalOpt = document.createElement('option');
+      modalOpt.value = `第 ${i} 週`;
+      modalOpt.textContent = `第 ${i} 週 ${i === 0 ? '(不計)' : ''}`;
+      modalWeekSelect.appendChild(modalOpt);
+    }
+
+    weekSelect.value = `第 ${activeWeekNum} 週`;
+    activeWeek = weekSelect.value;
+  }
+
+  function parseRecord(rec) {
+    if (rec === undefined || rec === null) return { val: null, note: '' };
+    if (typeof rec === 'object') return { val: rec.val, note: rec.note || '' };
+    return { val: rec, note: '' };
+  }
+
+  function pressNum(num) {
+    if (currentStep === 1) {
+      if (currentSeat === '0') currentSeat = '';
+      if (currentSeat.length < 2) currentSeat += num;
+      const sNum = parseInt(currentSeat, 10);
+      document.getElementById('screen-val').innerHTML = `${currentSeat || '0'} <span style="font-size:16px; color:#a0aec0;">號</span>`;
+      document.getElementById('name-display').textContent = STUDENT_MAP[sNum] || '';
+    } else {
+      currentStatus = 'laps';
+      if (currentVal === '0') currentVal = '';
+      if (currentVal.length < 3) currentVal += num;
+      document.getElementById('screen-val').innerHTML = `${currentVal || '0'} <span style="font-size:16px; color:#a0aec0;">圈</span>`;
+    }
+  }
+
+  function setSpecialStatus(type) {
+    if (currentStep === 1) {
+      alert('請先輸入座號並點擊「下一步」！');
+      return;
+    }
+    currentStatus = type;
+    currentVal = type;
+    document.getElementById('screen-val').innerHTML = `<span style="color:#f6ad55;">【${type}】</span>`;
+  }
+
+  function handleCancelBtn() {
+    if (currentStep === 2) {
+      resetToStepOne();
+    } else {
+      currentSeat = '';
+      document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
+      document.getElementById('name-display').textContent = '';
+    }
+  }
+
+  function resetToStepOne() {
+    currentStep = 1;
+    currentSeat = '';
+    currentVal = '';
+    currentStatus = '';
+    document.getElementById('status-text').textContent = '步驟 1：請輸入【座號】';
+    document.getElementById('name-display').textContent = '';
+    document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
+    cancelBtnTag.style.display = 'none';
+    
+    const actionBtn = document.getElementById('btn-action');
+    actionBtn.textContent = '下一步 ➔ 輸入圈數';
+    actionBtn.style.background = '#3182ce';
+    btnCancel.textContent = '清除';
+  }
+
+  function backspace() {
+    if (currentStep === 1) {
+      currentSeat = currentSeat.slice(0, -1);
+      const sNum = parseInt(currentSeat, 10);
+      document.getElementById('screen-val').innerHTML = `${currentSeat || '0'} <span style="font-size:16px; color:#a0aec0;">號</span>`;
+      document.getElementById('name-display').textContent = STUDENT_MAP[sNum] || '';
+    } else {
+      currentVal = (currentStatus === '假' || currentStatus === '傷') ? '' : currentVal.slice(0, -1);
+      document.getElementById('screen-val').innerHTML = `${currentVal || '0'} <span style="font-size:16px; color:#a0aec0;">圈</span>`;
+    }
+  }
+
+  function userChangeSeason() {
+    currentSeason = seasonSelect.value;
+    initWeekOptions();
+    refreshUI();
+  }
+
+  function userChangeWeek() {
+    activeWeek = weekSelect.value;
+    refreshUI();
+  }
+
+  function pickSeat(seatNum) {
+    currentSeat = seatNum.toString();
+    currentStep = 1;
+    handleAction();
+  }
+
+  async function handleAction() {
+    const statusText = document.getElementById('status-text');
+    const actionBtn = document.getElementById('btn-action');
+
+    if (currentStep === 1) {
+      const s = parseInt(currentSeat, 10);
+      if (!STUDENT_MAP[s]) {
+        alert('請輸入名單中有效的座號！');
+        return;
+      }
+      currentStep = 2;
+      statusText.textContent = `【${s} 號 ${STUDENT_MAP[s]}】`;
+      document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">圈</span>`;
+      cancelBtnTag.style.display = 'inline-block';
+      btnCancel.textContent = '返回';
+      actionBtn.textContent = '✔ 確認送出';
+      actionBtn.style.background = '#38a169';
+    } else {
+      const s = parseInt(currentSeat, 10);
+      let recordValue = null;
+
+      if (currentStatus === '假' || currentStatus === '傷') {
+        recordValue = currentStatus;
+      } else {
+        const laps = parseInt(currentVal, 10);
+        if (isNaN(laps) || laps < 0) {
+          alert('請輸入圈數或選擇 [假/傷]！');
+          return;
+        }
+        recordValue = laps;
+      }
+
+      const existing = (cloudDB[currentSeason] && cloudDB[currentSeason][s]) 
+        ? parseRecord(cloudDB[currentSeason][s][activeWeek]) : { note: '' };
+
+      try {
+        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+          [currentSeason]: {
+            [s]: {
+              [activeWeek]: { val: recordValue, note: existing.note || '' }
+            }
+          }
+        }, { merge: true });
+      } catch (err) {
+        alert('雲端儲存失敗，請檢查網路連線！');
+        console.error(err);
+      }
+
+      resetToStepOne();
+    }
+  }
+
+  function refreshUI() {
+    const currentSeasonDB = cloudDB[currentSeason] || {};
+    const missingContainer = document.getElementById('missing-list');
+    const tableBody = document.getElementById('table-body');
+    missingContainer.innerHTML = '';
+    tableBody.innerHTML = '';
+
+    document.getElementById('current-badge-label').textContent = `${SEASONS[currentSeason]} ${activeWeek}`;
+    document.getElementById('report-title').textContent = `📋 ${SEASONS[currentSeason]} 圈數總表`;
+
+    let missingCount = 0;
+
+    STUDENT_LIST.forEach(student => {
+      const s = student.seat;
+      const sName = student.name;
+      const currentSeatRecords = currentSeasonDB[s] || {};
+      const thisWeekRec = parseRecord(currentSeatRecords[activeWeek]);
+
+      let termTotalLaps = 0;
+      for (let w = 1; w <= TOTAL_WEEKS; w++) {
+        const parsed = parseRecord(currentSeatRecords[`第 ${w} 週`]);
+        if (typeof parsed.val === 'number') termTotalLaps += parsed.val;
+      }
+
+      let annualTotalLaps = 0;
+      ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
+        const sRecords = (cloudDB[seas] && cloudDB[seas][s]) ? cloudDB[seas][s] : {};
+        for (let w = 1; w <= TOTAL_WEEKS; w++) {
+          const parsed = parseRecord(sRecords[`第 ${w} 週`]);
+          if (typeof parsed.val === 'number') annualTotalLaps += parsed.val;
+        }
+      });
+
+      if (thisWeekRec.val === null) {
+        missingCount++;
+        const tag = document.createElement('div');
+        tag.className = 'missing-tag';
+        tag.textContent = `${s} ${sName}`;
+        tag.onclick = () => pickSeat(s);
+        missingContainer.appendChild(tag);
+      }
+
+      function renderCell(rec) {
+        const parsed = parseRecord(rec);
+        if (parsed.val === null) return '-';
+        let mainText = '';
+        if (parsed.val === '假') mainText = '<span class="status-leave">假</span>';
+        else if (parsed.val === '傷') mainText = '<span class="status-hurt">傷</span>';
+        else if (typeof parsed.val === 'number') mainText = `<span style="font-weight:900; color:#2b6cb0;">${parsed.val}</span>`;
+        
+        if (parsed.note) {
+          mainText += `<span class="note-dot" title="備註: ${parsed.note}">💬</span>`;
+        }
+        return mainText;
+      }
+
+      let weeksTdHtml = '';
+      for (let w = 1; w <= TOTAL_WEEKS; w++) {
+        weeksTdHtml += `<td>${renderCell(currentSeatRecords[`第 ${w} 週`])}</td>`;
+      }
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td class="sticky-col"><strong>${s}</strong></td>
+        <td class="sticky-col-2">${sName}</td>
+        <td class="term-total-col">${termTotalLaps}</td>
+        <td class="annual-total-col">${annualTotalLaps}</td>
+        <td><button class="btn-edit" onclick="openEditModal(${s})">修改</button></td>
+        ${weeksTdHtml}
+      `;
+      tableBody.appendChild(row);
+    });
+
+    document.getElementById('unrecorded-count').textContent = missingCount;
+    if (missingCount === 0) {
+      missingContainer.innerHTML = '<span style="font-size:13px; color:#38a169; font-weight:900;">🎉 本週 57 人已全員登記完成！</span>';
+    }
+  }
+
+  function openSettingModal() {
+    document.getElementById('start-date-autumn').value = termSettings.startDates.autumn || '';
+    document.getElementById('start-date-winter').value = termSettings.startDates.winter || '';
+    document.getElementById('start-date-spring').value = termSettings.startDates.spring || '';
+    document.getElementById('start-date-summer').value = termSettings.startDates.summer || '';
+    document.getElementById('setting-modal').style.display = 'flex';
+  }
+
+  function closeSettingModal() {
+    document.getElementById('setting-modal').style.display = 'none';
+  }
+
+  async function saveSettings() {
+    termSettings.startDates.autumn = document.getElementById('start-date-autumn').value;
+    termSettings.startDates.winter = document.getElementById('start-date-winter').value;
+    termSettings.startDates.spring = document.getElementById('start-date-spring').value;
+    termSettings.startDates.summer = document.getElementById('start-date-summer').value;
+    
+    try {
+      await window.setDoc(window.doc(window.db, "settings", "terms"), termSettings);
+      closeSettingModal();
+    } catch (e) {
+      alert('儲存設定失敗，請檢查權限！');
+    }
+  }
+
+  function openEditModal(seat) {
+    editingSeat = seat;
+    document.getElementById('modal-student-info').textContent = `${seat} 號 ${STUDENT_MAP[seat]} (${SEASONS[currentSeason]})`;
+    modalWeekSelect.value = activeWeek;
+    onModalWeekChange();
+    document.getElementById('edit-modal').style.display = 'flex';
+  }
+
+  function closeEditModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+    editingSeat = null;
+  }
+
+  async function batchSetAllWeeks(type) {
+    if (!editingSeat) return;
+    const sName = STUDENT_MAP[editingSeat];
+    if (confirm(`確定要將【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】的 1～10 週全設為「${type}」嗎？`)) {
+      const weeksObj = {};
+      for (let w = 1; w <= TOTAL_WEEKS; w++) {
+        weeksObj[`第 ${w} 週`] = { val: type, note: '' };
+      }
+      await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [currentSeason]: {
+          [editingSeat]: weeksObj
+        }
+      }, { merge: true });
+      closeEditModal();
+    }
+  }
+
+  async function batchClearAllWeeks() {
+    if (!editingSeat) return;
+    const sName = STUDENT_MAP[editingSeat];
+    if (confirm(`確定要清空【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】所有紀錄嗎？`)) {
+      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [`${currentSeason}.${editingSeat}`]: window.deleteField()
+      });
+      closeEditModal();
+    }
+  }
+
+  function onModalWeekChange() {
+    if (!editingSeat) return;
+    const wk = modalWeekSelect.value;
+    const sData = (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat]) ? cloudDB[currentSeason][editingSeat] : {};
+    const parsed = parseRecord(sData[wk]);
+
+    const typeSelect = document.getElementById('modal-type-select');
+    const lapsInput = document.getElementById('modal-laps-input');
+    const noteInput = document.getElementById('modal-note-input');
+
+    noteInput.value = parsed.note || '';
+
+    if (parsed.val === '假' || parsed.val === '傷') {
+      typeSelect.value = parsed.val;
+      lapsInput.style.display = 'none';
+    } else {
+      typeSelect.value = 'laps';
+      lapsInput.style.display = 'block';
+      lapsInput.value = (typeof parsed.val === 'number') ? parsed.val : '';
+    }
+  }
+
+  function toggleModalInput() {
+    const type = document.getElementById('modal-type-select').value;
+    const lapsInput = document.getElementById('modal-laps-input');
+    lapsInput.style.display = (type === 'laps') ? 'block' : 'none';
+  }
+
+  async function saveModalEdit() {
+    if (!editingSeat) return;
+    const wk = modalWeekSelect.value;
+    const type = document.getElementById('modal-type-select').value;
+    const lapsInput = document.getElementById('modal-laps-input');
+    const noteInput = document.getElementById('modal-note-input').value.trim();
+
+    let finalVal = null;
+    if (type === '假' || type === '傷') {
+      finalVal = type;
+    } else {
+      const num = parseInt(lapsInput.value, 10);
+      if (isNaN(num) || num < 0) {
+        alert('請輸入有效的圈數數字！');
+        return;
+      }
+      finalVal = num;
+    }
+
+    await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+      [currentSeason]: {
+        [editingSeat]: {
+          [wk]: { val: finalVal, note: noteInput }
+        }
+      }
+    }, { merge: true });
+
+    closeEditModal();
+  }
+
+  async function deleteCurrentWeekRecord() {
+    if (!editingSeat) return;
+    const wk = modalWeekSelect.value;
+    if (confirm(`確定要刪除 ${editingSeat} 號 在【${SEASONS[currentSeason]} ${wk}】的紀錄嗎？`)) {
+      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [`${currentSeason}.${editingSeat}.${wk}`]: window.deleteField()
+      });
+      closeEditModal();
+    }
+  }
+
+  function exportTermCSV() {
+    const currentSeasonDB = cloudDB[currentSeason] || {};
+    let csv = `\uFEFF座號,姓名,${SEASONS[currentSeason]}當季總圈數`;
+    for (let w = 1; w <= TOTAL_WEEKS; w++) csv += `,第${w}週`;
+    csv += '\n';
+
+    STUDENT_LIST.forEach(student => {
+      const s = student.seat;
+      const sName = student.name;
+      const seatRecords = currentSeasonDB[s] || {};
+      let termTotalLaps = 0;
+      let weekDetails = [];
+
+      for (let w = 1; w <= TOTAL_WEEKS; w++) {
+        const parsed = parseRecord(seatRecords[`第 ${w} 週`]);
+        if (typeof parsed.val === 'number') {
+          termTotalLaps += parsed.val;
+          weekDetails.push(parsed.note ? `${parsed.val}圈(${parsed.note})` : `${parsed.val}圈`);
+        } else if (parsed.val) {
+          weekDetails.push(parsed.note ? `${parsed.val}(${parsed.note})` : `${parsed.val}`);
+        } else {
+          weekDetails.push('-');
+        }
+      }
+
+      csv += `${s},${sName},${termTotalLaps},${weekDetails.join(',')}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `體育圈數_${SEASONS[currentSeason]}_統計表.csv`;
+    link.click();
+  }
+
+  function exportAnnualCSV() {
+    let csv = '\uFEFF座號,姓名,四季總累計,秋季累計,冬季累計,春季累計,夏季累計\n';
+
+    STUDENT_LIST.forEach(student => {
+      const s = student.seat;
+      const sName = student.name;
+      const termSums = { autumn: 0, winter: 0, spring: 0, summer: 0 };
+      let annualTotal = 0;
+
+      ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
+        const records = (cloudDB[seas] && cloudDB[seas][s]) ? cloudDB[seas][s] : {};
+        for (let w = 1; w <= TOTAL_WEEKS; w++) {
+          const parsed = parseRecord(records[`第 ${w} 週`]);
+          if (typeof parsed.val === 'number') {
+            termSums[seas] += parsed.val;
+            annualTotal += parsed.val;
+          }
+        }
+      });
+
+      csv += `${s},${sName},${annualTotal},${termSums.autumn},${termSums.winter},${termSums.spring},${termSums.summer}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `體育圈數_跨學季全年度總成績表.csv`;
+    link.click();
+  }
+
+  initWeekOptions();
+  refreshUI();
+</script>
+
+</body>
+</html>
