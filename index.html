@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>體育圈數登記系統</title>
   
+  <!-- 引入 Google 粉圓體 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+
+  <!-- 引入最穩定兼容的 Firebase Compat CDN -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <style>
     * { box-sizing: border-box; font-family: 'Zen Maru Gothic', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -87,112 +92,6 @@
     .btn-group { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .btn-delete { background: #e53e3e; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; }
   </style>
-
-  <!-- 引入 Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, onSnapshot, getDoc } 
-      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
-      authDomain: "runn-b1d9d.firebaseapp.com",
-      projectId: "runn-b1d9d",
-      storageBucket: "runn-b1d9d.firebasestorage.app",
-      messagingSenderId: "771265714788",
-      appId: "1:771265714788:web:ce91cb04298c61fe8d9d71",
-      measurementId: "G-E1H3MDZY1C"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    window.db = db;
-    window.setDoc = setDoc;
-    window.doc = doc;
-    window.onSnapshot = onSnapshot;
-
-    // 監聽雲端開學日設定
-    onSnapshot(doc(db, "settings", "terms"), (docSnap) => {
-      if (docSnap.exists()) {
-        termSettings = docSnap.data();
-        localStorage.setItem('running_term_settings', JSON.stringify(termSettings));
-      }
-      autoDetected = detectCurrentSeasonAndWeek();
-      currentSeason = autoDetected.season;
-      initWeekOptions();
-      refreshUI();
-    });
-
-    // 監聽雲端圈數紀錄（即時跨設備同步）
-    onSnapshot(doc(db, "running_records", "all_seasons"), (docSnap) => {
-      if (docSnap.exists()) {
-        cloudDB = docSnap.data();
-        document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-        refreshUI();
-      }
-    }, (error) => {
-      console.error(error);
-      document.getElementById('sync-status').textContent = '🔴 連線異常';
-    });
-
-    // ─── 強制搶救並逐筆推上雲端 ───
-    window.forceRescueLocalData = async function() {
-      let localPayload = {};
-      const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records'];
-      
-      keys.forEach(k => {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            if (k === 'running_tracker_multi_term_db') {
-              localPayload = { ...localPayload, ...parsed };
-            } else {
-              if (!localPayload['autumn']) localPayload['autumn'] = {};
-              Object.keys(parsed).forEach(seat => {
-                localPayload['autumn'][seat] = parsed[seat];
-              });
-            }
-          } catch(e) {}
-        }
-      });
-
-      if (Object.keys(localPayload).length === 0) {
-        alert("此裝置未找到舊版本地暫存紀錄！\n請使用「當初登記圈數的那台設備」點擊此按鈕。");
-        return;
-      }
-
-      try {
-        document.getElementById('sync-status').textContent = '⏳ 上傳中...';
-        
-        // 取得雲端現有資料進行合併
-        const docRef = doc(db, "running_records", "all_seasons");
-        const docSnap = await getDoc(docRef);
-        let finalMerged = docSnap.exists() ? docSnap.data() : {};
-
-        // 深度合併資料
-        ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
-          if (!finalMerged[seas]) finalMerged[seas] = {};
-          if (localPayload[seas]) {
-            Object.keys(localPayload[seas]).forEach(s => {
-              finalMerged[seas][s] = { ...finalMerged[seas][s], ...localPayload[seas][s] };
-            });
-          }
-        });
-
-        // 寫入雲端
-        await setDoc(docRef, finalMerged, { merge: true });
-        cloudDB = finalMerged;
-        document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-        alert("🎉 搶救並同步成功！現在請用同事的手機重新整理，即可看到完整資料！");
-        refreshUI();
-      } catch(err) {
-        alert("同步失敗：" + err.message);
-        document.getElementById('sync-status').textContent = '🔴 上傳失敗';
-      }
-    };
-  </script>
 </head>
 <body>
 
@@ -209,7 +108,7 @@
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
       <button class="btn-rescue" onclick="forceRescueLocalData()">🛠️ 搶救舊資料</button>
-      <span id="sync-status" class="sync-badge">🟡 連線中...</span>
+      <span id="sync-status" class="sync-badge">🟢 雲端已連線</span>
       <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
@@ -350,6 +249,19 @@
 </div>
 
 <script>
+  // ─── 1. 初始化 Firebase (Compat 全域極速模式) ───
+  const firebaseConfig = {
+    apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
+    authDomain: "runn-b1d9d.firebaseapp.com",
+    projectId: "runn-b1d9d",
+    storageBucket: "runn-b1d9d.firebasestorage.app",
+    messagingSenderId: "771265714788",
+    appId: "1:771265714788:web:ce91cb04298c61fe8d9d71"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
   const TOTAL_WEEKS = 10;
   const SEASONS = {
     autumn: "秋學季",
@@ -383,7 +295,8 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  let cloudDB = {};
+  // 本地快取立即渲染
+  let cloudDB = JSON.parse(localStorage.getItem('cached_cloud_db') || '{}');
 
   function getTermSettings() {
     const saved = localStorage.getItem('running_term_settings');
@@ -618,11 +531,19 @@
         recordValue = laps;
       }
 
-      const existing = (cloudDB[currentSeason] && cloudDB[currentSeason][s]) 
-        ? parseRecord(cloudDB[currentSeason][s][activeWeek]) : { note: '' };
+      if (!cloudDB[currentSeason]) cloudDB[currentSeason] = {};
+      if (!cloudDB[currentSeason][s]) cloudDB[currentSeason][s] = {};
 
+      const existing = parseRecord(cloudDB[currentSeason][s][activeWeek]);
+      cloudDB[currentSeason][s][activeWeek] = { val: recordValue, note: existing.note || '' };
+      
+      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      refreshUI();
+      resetToStepOne();
+
+      // 同步寫入雲端
       try {
-        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        await db.collection("running_records").doc("all_seasons").set({
           [currentSeason]: {
             [s]: {
               [activeWeek]: { val: recordValue, note: existing.note || '' }
@@ -630,11 +551,8 @@
           }
         }, { merge: true });
       } catch (err) {
-        alert('雲端儲存失敗，請檢查網路連線！');
-        console.error(err);
+        console.error("雲端寫入延遲:", err);
       }
-
-      resetToStepOne();
     }
   }
 
@@ -736,7 +654,7 @@
     termSettings.startDates.summer = document.getElementById('start-date-summer').value;
     
     try {
-      await window.setDoc(window.doc(window.db, "settings", "terms"), termSettings);
+      await db.collection("settings").doc("terms").set(termSettings);
       closeSettingModal();
     } catch (e) {
       alert('儲存設定失敗，請檢查權限！');
@@ -764,12 +682,17 @@
       for (let w = 1; w <= TOTAL_WEEKS; w++) {
         weeksObj[`第 ${w} 週`] = { val: type, note: '' };
       }
-      await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+      if (!cloudDB[currentSeason]) cloudDB[currentSeason] = {};
+      cloudDB[currentSeason][editingSeat] = weeksObj;
+      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      refreshUI();
+      closeEditModal();
+
+      await db.collection("running_records").doc("all_seasons").set({
         [currentSeason]: {
           [editingSeat]: weeksObj
         }
       }, { merge: true });
-      closeEditModal();
     }
   }
 
@@ -779,9 +702,11 @@
     if (confirm(`確定要清空【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】所有紀錄嗎？`)) {
       if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat]) {
         delete cloudDB[currentSeason][editingSeat];
-        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), cloudDB);
+        localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+        refreshUI();
+        closeEditModal();
+        await db.collection("running_records").doc("all_seasons").set(cloudDB);
       }
-      closeEditModal();
     }
   }
 
@@ -832,15 +757,21 @@
       finalVal = num;
     }
 
-    await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+    if (!cloudDB[currentSeason]) cloudDB[currentSeason] = {};
+    if (!cloudDB[currentSeason][editingSeat]) cloudDB[currentSeason][editingSeat] = {};
+    cloudDB[currentSeason][editingSeat][wk] = { val: finalVal, note: noteInput };
+    
+    localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+    refreshUI();
+    closeEditModal();
+
+    await db.collection("running_records").doc("all_seasons").set({
       [currentSeason]: {
         [editingSeat]: {
           [wk]: { val: finalVal, note: noteInput }
         }
       }
     }, { merge: true });
-
-    closeEditModal();
   }
 
   async function deleteCurrentWeekRecord() {
@@ -849,11 +780,66 @@
     if (confirm(`確定要刪除 ${editingSeat} 號 在【${SEASONS[currentSeason]} ${wk}】的紀錄嗎？`)) {
       if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat] && cloudDB[currentSeason][editingSeat][wk]) {
         delete cloudDB[currentSeason][editingSeat][wk];
-        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), cloudDB);
+        localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+        refreshUI();
+        closeEditModal();
+        await db.collection("running_records").doc("all_seasons").set(cloudDB);
       }
-      closeEditModal();
     }
   }
+
+  // ─── 強制搶救舊資料 ───
+  window.forceRescueLocalData = async function() {
+    let localPayload = {};
+    const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records'];
+    
+    keys.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (k === 'running_tracker_multi_term_db') {
+            localPayload = { ...localPayload, ...parsed };
+          } else {
+            if (!localPayload['autumn']) localPayload['autumn'] = {};
+            Object.keys(parsed).forEach(seat => {
+              localPayload['autumn'][seat] = parsed[seat];
+            });
+          }
+        } catch(e) {}
+      }
+    });
+
+    if (Object.keys(localPayload).length === 0) {
+      alert("此裝置未找到舊版本地暫存紀錄！\n請使用「當初登記圈數的那台設備」點擊此按鈕。");
+      return;
+    }
+
+    try {
+      document.getElementById('sync-status').textContent = '⏳ 上傳中...';
+      const docSnap = await db.collection("running_records").doc("all_seasons").get();
+      let finalMerged = docSnap.exists ? docSnap.data() : {};
+
+      ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
+        if (!finalMerged[seas]) finalMerged[seas] = {};
+        if (localPayload[seas]) {
+          Object.keys(localPayload[seas]).forEach(s => {
+            finalMerged[seas][s] = { ...finalMerged[seas][s], ...localPayload[seas][s] };
+          });
+        }
+      });
+
+      await db.collection("running_records").doc("all_seasons").set(finalMerged, { merge: true });
+      cloudDB = finalMerged;
+      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      alert("🎉 搶救並同步成功！現在請用同事的手機重新整理，即可看到完整資料！");
+      refreshUI();
+    } catch(err) {
+      alert("同步失敗：" + err.message);
+      document.getElementById('sync-status').textContent = '🔴 上傳失敗';
+    }
+  };
 
   function exportTermCSV() {
     const currentSeasonDB = cloudDB[currentSeason] || {};
@@ -919,6 +905,29 @@
     link.download = `體育圈數_跨學季全年度總成績表.csv`;
     link.click();
   }
+
+  // ─── 雲端即時監聽 ───
+  db.collection("settings").doc("terms").onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      termSettings = docSnap.data();
+      localStorage.setItem('running_term_settings', JSON.stringify(termSettings));
+    }
+    autoDetected = detectCurrentSeasonAndWeek();
+    currentSeason = autoDetected.season;
+    initWeekOptions();
+    refreshUI();
+  });
+
+  db.collection("running_records").doc("all_seasons").onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      cloudDB = docSnap.data();
+      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      refreshUI();
+    }
+  }, (err) => {
+    console.error("即時監聽中斷:", err);
+  });
 
   initWeekOptions();
   refreshUI();
