@@ -88,9 +88,10 @@
     .btn-delete { background: #e53e3e; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; }
   </style>
 
+  <!-- 引入 Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteField } 
+    import { getFirestore, doc, setDoc, onSnapshot, getDoc } 
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -110,9 +111,8 @@
     window.setDoc = setDoc;
     window.doc = doc;
     window.onSnapshot = onSnapshot;
-    window.updateDoc = updateDoc;
-    window.deleteField = deleteField;
 
+    // 監聽雲端開學日設定
     onSnapshot(doc(db, "settings", "terms"), (docSnap) => {
       if (docSnap.exists()) {
         termSettings = docSnap.data();
@@ -124,59 +124,72 @@
       refreshUI();
     });
 
+    // 監聽雲端圈數紀錄（即時跨設備同步）
     onSnapshot(doc(db, "running_records", "all_seasons"), (docSnap) => {
       if (docSnap.exists()) {
         cloudDB = docSnap.data();
-      } else {
-        cloudDB = {};
+        document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+        refreshUI();
       }
-      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-      refreshUI();
     }, (error) => {
       console.error(error);
       document.getElementById('sync-status').textContent = '🔴 連線異常';
     });
 
-    // ─── 強制搶救舊資料函式 ───
+    // ─── 強制搶救並逐筆推上雲端 ───
     window.forceRescueLocalData = async function() {
-      let mergedData = {};
-      let found = false;
-
-      // 檢查所有可能儲存過舊資料的 LocalStorage 鍵值
-      const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records', 'lap_calculator_data'];
+      let localPayload = {};
+      const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records'];
       
       keys.forEach(k => {
         const raw = localStorage.getItem(k);
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            if (Object.keys(parsed).length > 0) {
-              found = true;
-              if (k === 'running_tracker_multi_term_db') {
-                mergedData = { ...mergedData, ...parsed };
-              } else {
-                if (!mergedData['autumn']) mergedData['autumn'] = {};
-                Object.keys(parsed).forEach(seat => {
-                  if (typeof parsed[seat] === 'object' && !parsed[seat].total) {
-                    mergedData['autumn'][seat] = parsed[seat];
-                  }
-                });
-              }
+            if (k === 'running_tracker_multi_term_db') {
+              localPayload = { ...localPayload, ...parsed };
+            } else {
+              if (!localPayload['autumn']) localPayload['autumn'] = {};
+              Object.keys(parsed).forEach(seat => {
+                localPayload['autumn'][seat] = parsed[seat];
+              });
             }
           } catch(e) {}
         }
       });
 
-      if (!found || Object.keys(mergedData).length === 0) {
-        alert("此裝置未找到舊版本地暫存紀錄。\n請確認您是否使用「當初登記圈數的那台手機/電腦」開啟！");
+      if (Object.keys(localPayload).length === 0) {
+        alert("此裝置未找到舊版本地暫存紀錄！\n請使用「當初登記圈數的那台設備」點擊此按鈕。");
         return;
       }
 
       try {
-        await setDoc(doc(db, "running_records", "all_seasons"), mergedData, { merge: true });
-        alert("🎉 搶救成功！舊資料已全數同步至雲端！");
+        document.getElementById('sync-status').textContent = '⏳ 上傳中...';
+        
+        // 取得雲端現有資料進行合併
+        const docRef = doc(db, "running_records", "all_seasons");
+        const docSnap = await getDoc(docRef);
+        let finalMerged = docSnap.exists() ? docSnap.data() : {};
+
+        // 深度合併資料
+        ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
+          if (!finalMerged[seas]) finalMerged[seas] = {};
+          if (localPayload[seas]) {
+            Object.keys(localPayload[seas]).forEach(s => {
+              finalMerged[seas][s] = { ...finalMerged[seas][s], ...localPayload[seas][s] };
+            });
+          }
+        });
+
+        // 寫入雲端
+        await setDoc(docRef, finalMerged, { merge: true });
+        cloudDB = finalMerged;
+        document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+        alert("🎉 搶救並同步成功！現在請用同事的手機重新整理，即可看到完整資料！");
+        refreshUI();
       } catch(err) {
         alert("同步失敗：" + err.message);
+        document.getElementById('sync-status').textContent = '🔴 上傳失敗';
       }
     };
   </script>
@@ -764,9 +777,10 @@
     if (!editingSeat) return;
     const sName = STUDENT_MAP[editingSeat];
     if (confirm(`確定要清空【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】所有紀錄嗎？`)) {
-      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
-        [`${currentSeason}.${editingSeat}`]: window.deleteField()
-      });
+      if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat]) {
+        delete cloudDB[currentSeason][editingSeat];
+        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), cloudDB);
+      }
       closeEditModal();
     }
   }
@@ -833,9 +847,10 @@
     if (!editingSeat) return;
     const wk = modalWeekSelect.value;
     if (confirm(`確定要刪除 ${editingSeat} 號 在【${SEASONS[currentSeason]} ${wk}】的紀錄嗎？`)) {
-      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
-        [`${currentSeason}.${editingSeat}.${wk}`]: window.deleteField()
-      });
+      if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat] && cloudDB[currentSeason][editingSeat][wk]) {
+        delete cloudDB[currentSeason][editingSeat][wk];
+        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), cloudDB);
+      }
       closeEditModal();
     }
   }
