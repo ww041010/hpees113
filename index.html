@@ -5,20 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>體育圈數登記系統</title>
   
-  <!-- 引入 Google 粉圓體 (Zen Maru Gothic) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
 
   <style>
-    * { 
-      box-sizing: border-box; 
-      font-family: 'Zen Maru Gothic', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
-    }
+    * { box-sizing: border-box; font-family: 'Zen Maru Gothic', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { background: #f0f4f8; margin: 0; padding: 16px; color: #2d3748; display: flex; flex-direction: column; align-items: center; }
     .container { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
     
-    /* 頂部列 */
     .top-bar {
       background: #fff; padding: 12px 16px; border-radius: 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex-wrap: wrap; gap: 8px;
     }
@@ -26,10 +21,9 @@
       padding: 6px 12px; border-radius: 8px; border: 1px solid #cbd5e0; font-size: 14px; background: #edf2f7; font-weight: 700;
     }
 
-    /* 連線狀態標籤 */
     .sync-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 900; background: #c6f6d5; color: #22543d; }
+    .btn-rescue { background: #feebc8; color: #c05621; border: 1px solid #fbd38d; font-size: 12px; font-weight: 900; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 
-    /* 計算機主體 */
     .calc-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .screen {
       background: #1a202c; color: #fff; border-radius: 12px; padding: 14px 18px; text-align: right; min-height: 90px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 14px;
@@ -52,7 +46,6 @@
     button.btn-clear { background: #fed7d7; color: #9b2c2c; font-size: 17px; font-weight: 900; }
     button.btn-clear:active { background: #feb2b2; transform: scale(0.96); }
 
-    /* 未登記提醒區 */
     .alert-card { background: #fffaf0; border: 1px solid #feebc8; border-radius: 14px; padding: 14px; }
     .alert-title { font-size: 15px; font-weight: 900; color: #c05621; margin-bottom: 8px; }
     .missing-tags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 110px; overflow-y: auto; }
@@ -61,7 +54,6 @@
     }
     .missing-tag:hover { background: #edf2f7; border-color: #a0aec0; }
 
-    /* 老師總表 */
     .report-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
     .report-header h2 { font-size: 16px; margin: 0; color: #2d3748; font-weight: 900; }
@@ -84,7 +76,6 @@
 
     .note-dot { display: inline-block; font-size: 11px; vertical-align: super; cursor: help; margin-left: 2px; }
 
-    /* 彈窗 */
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; padding: 16px; z-index: 99; }
     .modal-content { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 380px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
     .modal-field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; }
@@ -97,7 +88,6 @@
     .btn-delete { background: #e53e3e; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; }
   </style>
 
-  <!-- 引入 Firebase SDK (已配置您的專屬金鑰) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteField } 
@@ -123,7 +113,6 @@
     window.updateDoc = updateDoc;
     window.deleteField = deleteField;
 
-    // 監聽雲端開學日設定
     onSnapshot(doc(db, "settings", "terms"), (docSnap) => {
       if (docSnap.exists()) {
         termSettings = docSnap.data();
@@ -135,65 +124,66 @@
       refreshUI();
     });
 
-    // 監聽雲端圈數紀錄
-    onSnapshot(doc(db, "running_records", "all_seasons"), async (docSnap) => {
+    onSnapshot(doc(db, "running_records", "all_seasons"), (docSnap) => {
       if (docSnap.exists()) {
         cloudDB = docSnap.data();
       } else {
         cloudDB = {};
       }
       document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-      
-      // 自動檢查是否有舊版 LocalStorage 資料需要搬移上雲端
-      await checkAndMigrateLocalData();
-      
       refreshUI();
     }, (error) => {
       console.error(error);
       document.getElementById('sync-status').textContent = '🔴 連線異常';
     });
 
-    // ─── 舊資料自動補上傳功能 ───
-    async function checkAndMigrateLocalData() {
-      // 檢查舊版是否有資料
-      const oldMultiTerm = localStorage.getItem('running_tracker_multi_term_db');
-      const oldSingleTerm = localStorage.getItem('running_tracker_db_57') || localStorage.getItem('running_records');
+    // ─── 強制搶救舊資料函式 ───
+    window.forceRescueLocalData = async function() {
+      let mergedData = {};
+      let found = false;
+
+      // 檢查所有可能儲存過舊資料的 LocalStorage 鍵值
+      const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records', 'lap_calculator_data'];
       
-      let uploadPayload = null;
-
-      if (oldMultiTerm) {
-        try {
-          const parsed = JSON.parse(oldMultiTerm);
-          if (Object.keys(parsed).length > 0) uploadPayload = parsed;
-        } catch(e) {}
-      } else if (oldSingleTerm) {
-        try {
-          const parsed = JSON.parse(oldSingleTerm);
-          if (Object.keys(parsed).length > 0) {
-            uploadPayload = { autumn: parsed };
-          }
-        } catch(e) {}
-      }
-
-      if (uploadPayload) {
-        try {
-          await setDoc(doc(db, "running_records", "all_seasons"), uploadPayload, { merge: true });
-          // 上傳成功後清空本地標記，避免重複上傳
-          localStorage.removeItem('running_tracker_multi_term_db');
-          localStorage.removeItem('running_tracker_db_57');
-          localStorage.removeItem('running_records');
-          console.log("舊資料已自動無痛同步至雲端！");
-        } catch (err) {
-          console.error("舊資料同步失敗:", err);
+      keys.forEach(k => {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Object.keys(parsed).length > 0) {
+              found = true;
+              if (k === 'running_tracker_multi_term_db') {
+                mergedData = { ...mergedData, ...parsed };
+              } else {
+                if (!mergedData['autumn']) mergedData['autumn'] = {};
+                Object.keys(parsed).forEach(seat => {
+                  if (typeof parsed[seat] === 'object' && !parsed[seat].total) {
+                    mergedData['autumn'][seat] = parsed[seat];
+                  }
+                });
+              }
+            }
+          } catch(e) {}
         }
+      });
+
+      if (!found || Object.keys(mergedData).length === 0) {
+        alert("此裝置未找到舊版本地暫存紀錄。\n請確認您是否使用「當初登記圈數的那台手機/電腦」開啟！");
+        return;
       }
-    }
+
+      try {
+        await setDoc(doc(db, "running_records", "all_seasons"), mergedData, { merge: true });
+        alert("🎉 搶救成功！舊資料已全數同步至雲端！");
+      } catch(err) {
+        alert("同步失敗：" + err.message);
+      }
+    };
   </script>
 </head>
 <body>
 
 <div class="container">
-  <!-- 頂部列：學季選擇與設定 -->
   <div class="top-bar">
     <div style="display:flex; align-items:center; gap:8px;">
       <select id="season-select" onchange="userChangeSeason()" style="color:#2b6cb0;">
@@ -205,12 +195,12 @@
       <select id="week-select" onchange="userChangeWeek()"></select>
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
+      <button class="btn-rescue" onclick="forceRescueLocalData()">🛠️ 搶救舊資料</button>
       <span id="sync-status" class="sync-badge">🟡 連線中...</span>
       <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
 
-  <!-- 計算機卡片 -->
   <div class="calc-card">
     <div class="screen">
       <div class="screen-status">
@@ -244,7 +234,6 @@
     </div>
   </div>
 
-  <!-- 未登記名單提醒 -->
   <div class="alert-card">
     <div class="alert-title">
       ⚠️ <span id="current-badge-label">秋學季 第 1 週</span> 尚未登記 (<span id="unrecorded-count">0</span> / 57 人)
@@ -252,7 +241,6 @@
     <div id="missing-list" class="missing-tags"></div>
   </div>
 
-  <!-- 老師總表 -->
   <div class="report-card">
     <div class="report-header">
       <h2 id="report-title">📋 圈數累計總表</h2>
@@ -278,7 +266,6 @@
   </div>
 </div>
 
-<!-- 學季開學日設定彈窗 -->
 <div id="setting-modal" class="modal">
   <div class="modal-content">
     <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight:900;">⚙️ 設定各學季開學日</h3>
@@ -305,7 +292,6 @@
   </div>
 </div>
 
-<!-- 修改／快速設定／狀況補充彈窗 -->
 <div id="edit-modal" class="modal">
   <div class="modal-content">
     <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight:900;">✏️ 修改／狀況補充</h3>
