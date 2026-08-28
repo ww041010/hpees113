@@ -11,8 +11,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
 
   <!-- 引入穩定相容版 Firebase CDN -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
   <style>
     * { box-sizing: border-box; font-family: 'Zen Maru Gothic', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -27,6 +27,7 @@
     }
 
     .sync-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 900; background: #c6f6d5; color: #22543d; }
+    .btn-rescue { background: #feebc8; color: #c05621; border: 1px solid #fbd38d; font-size: 12px; font-weight: 900; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 
     .calc-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .screen {
@@ -106,7 +107,8 @@
       <select id="week-select" onchange="userChangeWeek()"></select>
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
-      <span id="sync-status" class="sync-badge">🟢 雲端已同步</span>
+      <button class="btn-rescue" onclick="forceRescueLocalData()">🛠️ 搶救舊資料</button>
+      <span id="sync-status" class="sync-badge">🟡 連線中...</span>
       <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
@@ -293,7 +295,7 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  // ─── 2. 深度自動搶救：自動合併所有可能的歷史紀錄 ───
+  // 深度提取本地歷史紀錄
   function loadAllHistoryLocalData() {
     let result = {};
     const possibleKeys = [
@@ -321,7 +323,6 @@
                 }
               });
             } else {
-              // 舊單學季格式
               if (!result.autumn) result.autumn = {};
               Object.keys(parsed).forEach(seat => {
                 if (!result.autumn[seat]) result.autumn[seat] = {};
@@ -335,7 +336,6 @@
     return result;
   }
 
-  // 立即初始化記憶體與畫面
   let cloudDB = loadAllHistoryLocalData();
 
   function getTermSettings() {
@@ -577,12 +577,10 @@
       const existing = parseRecord(cloudDB[currentSeason][s][activeWeek]);
       cloudDB[currentSeason][s][activeWeek] = { val: recordValue, note: existing.note || '' };
       
-      // 永久本地備份
       localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
       refreshUI();
       resetToStepOne();
 
-      // 同步寫入雲端
       try {
         await db.collection("running_records").doc("all_seasons").set({
           [currentSeason]: {
@@ -698,7 +696,7 @@
       await db.collection("settings").doc("terms").set(termSettings);
       closeSettingModal();
     } catch (e) {
-      alert('儲存設定失敗，請檢查權限！');
+      alert('儲存設定失敗，請確認 Firebase Rules 規則！');
     }
   }
 
@@ -829,6 +827,35 @@
     }
   }
 
+  // ─── 強制搶救與備份提取 ───
+  window.forceRescueLocalData = async function() {
+    const rawData = loadAllHistoryLocalData();
+    let count = 0;
+    Object.keys(rawData).forEach(s => {
+      count += Object.keys(rawData[s] || {}).length;
+    });
+
+    if (count === 0) {
+      alert("此裝置目前未掃描到舊暫存紀錄。\n若您是用 LINE 打開，請點右下角轉用 Safari/Chrome 打開！");
+      return;
+    }
+
+    cloudDB = rawData;
+    localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
+    refreshUI();
+
+    try {
+      document.getElementById('sync-status').textContent = '⏳ 上傳中...';
+      await db.collection("running_records").doc("all_seasons").set(rawData, { merge: true });
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      alert(`🎉 成功搶救並同步 ${count} 位學生的紀錄至雲端！`);
+    } catch(err) {
+      document.getElementById('sync-status').textContent = '🔴 上傳失敗';
+      const backupText = JSON.stringify(rawData);
+      prompt("⚠️ 雲端被 Firebase 權限擋下，但資料已在畫面顯示！\n請複製下方文字備份：", backupText);
+    }
+  };
+
   function exportTermCSV() {
     const currentSeasonDB = cloudDB[currentSeason] || {};
     let csv = `\uFEFF座號,姓名,${SEASONS[currentSeason]}當季總圈數`;
@@ -894,7 +921,7 @@
     link.click();
   }
 
-  // ─── 雲端雙向合併監聽 ───
+  // ─── 雲端即時雙向監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
@@ -904,45 +931,17 @@
     currentSeason = autoDetected.season;
     initWeekOptions();
     refreshUI();
-  });
+  }, (err) => console.warn(err));
 
-  db.collection("running_records").doc("all_seasons").onSnapshot(async (docSnap) => {
-    let cloudData = docSnap.exists ? docSnap.data() : {};
-    let localData = loadAllHistoryLocalData();
-
-    // 智能雙向融合：本地有但雲端沒有的，自動補上傳；雲端有的自動拉下來
-    let needsUpload = false;
-    ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
-      if (!cloudData[seas]) cloudData[seas] = {};
-      if (localData[seas]) {
-        Object.keys(localData[seas]).forEach(seat => {
-          if (!cloudData[seas][seat]) {
-            cloudData[seas][seat] = localData[seas][seat];
-            needsUpload = true;
-          } else {
-            Object.keys(localData[seas][seat]).forEach(wk => {
-              if (cloudData[seas][seat][wk] === undefined) {
-                cloudData[seas][seat][wk] = localData[seas][seat][wk];
-                needsUpload = true;
-              }
-            });
-          }
-        });
-      }
-    });
-
-    cloudDB = cloudData;
-    localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
-    document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-    refreshUI();
-
-    if (needsUpload) {
-      try {
-        await db.collection("running_records").doc("all_seasons").set(cloudDB, { merge: true });
-      } catch(e) {}
+  db.collection("running_records").doc("all_seasons").onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      cloudDB = docSnap.data();
+      localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      refreshUI();
     }
   }, (err) => {
-    console.warn("離線使用中:", err);
+    console.warn("離線或同步等待中:", err);
   });
 
   initWeekOptions();
