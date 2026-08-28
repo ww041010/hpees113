@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
 
-  <!-- 引入最穩定兼容的 Firebase Compat CDN -->
+  <!-- 引入穩定相容版 Firebase CDN -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
@@ -27,7 +27,6 @@
     }
 
     .sync-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 900; background: #c6f6d5; color: #22543d; }
-    .btn-rescue { background: #feebc8; color: #c05621; border: 1px solid #fbd38d; font-size: 12px; font-weight: 900; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 
     .calc-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .screen {
@@ -107,8 +106,7 @@
       <select id="week-select" onchange="userChangeWeek()"></select>
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
-      <button class="btn-rescue" onclick="forceRescueLocalData()">🛠️ 搶救舊資料</button>
-      <span id="sync-status" class="sync-badge">🟢 雲端已連線</span>
+      <span id="sync-status" class="sync-badge">🟢 雲端已同步</span>
       <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
@@ -249,7 +247,7 @@
 </div>
 
 <script>
-  // ─── 1. 初始化 Firebase (Compat 全域極速模式) ───
+  // ─── 1. 初始化 Firebase ───
   const firebaseConfig = {
     apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
     authDomain: "runn-b1d9d.firebaseapp.com",
@@ -295,8 +293,50 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  // 本地快取立即渲染
-  let cloudDB = JSON.parse(localStorage.getItem('cached_cloud_db') || '{}');
+  // ─── 2. 深度自動搶救：自動合併所有可能的歷史紀錄 ───
+  function loadAllHistoryLocalData() {
+    let result = {};
+    const possibleKeys = [
+      'running_records_master_backup',
+      'running_tracker_multi_term_db',
+      'cached_cloud_db',
+      'running_tracker_db_57',
+      'running_records'
+    ];
+
+    possibleKeys.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.autumn || parsed.winter || parsed.spring || parsed.summer) {
+              ['autumn', 'winter', 'spring', 'summer'].forEach(s => {
+                if (parsed[s]) {
+                  if (!result[s]) result[s] = {};
+                  Object.keys(parsed[s]).forEach(seat => {
+                    if (!result[s][seat]) result[s][seat] = {};
+                    result[s][seat] = { ...result[s][seat], ...parsed[s][seat] };
+                  });
+                }
+              });
+            } else {
+              // 舊單學季格式
+              if (!result.autumn) result.autumn = {};
+              Object.keys(parsed).forEach(seat => {
+                if (!result.autumn[seat]) result.autumn[seat] = {};
+                result.autumn[seat] = { ...result.autumn[seat], ...parsed[seat] };
+              });
+            }
+          }
+        } catch(e) {}
+      }
+    });
+    return result;
+  }
+
+  // 立即初始化記憶體與畫面
+  let cloudDB = loadAllHistoryLocalData();
 
   function getTermSettings() {
     const saved = localStorage.getItem('running_term_settings');
@@ -537,7 +577,8 @@
       const existing = parseRecord(cloudDB[currentSeason][s][activeWeek]);
       cloudDB[currentSeason][s][activeWeek] = { val: recordValue, note: existing.note || '' };
       
-      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      // 永久本地備份
+      localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
       refreshUI();
       resetToStepOne();
 
@@ -684,7 +725,7 @@
       }
       if (!cloudDB[currentSeason]) cloudDB[currentSeason] = {};
       cloudDB[currentSeason][editingSeat] = weeksObj;
-      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+      localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
       refreshUI();
       closeEditModal();
 
@@ -702,7 +743,7 @@
     if (confirm(`確定要清空【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】所有紀錄嗎？`)) {
       if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat]) {
         delete cloudDB[currentSeason][editingSeat];
-        localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+        localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
         refreshUI();
         closeEditModal();
         await db.collection("running_records").doc("all_seasons").set(cloudDB);
@@ -761,7 +802,7 @@
     if (!cloudDB[currentSeason][editingSeat]) cloudDB[currentSeason][editingSeat] = {};
     cloudDB[currentSeason][editingSeat][wk] = { val: finalVal, note: noteInput };
     
-    localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+    localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
     refreshUI();
     closeEditModal();
 
@@ -780,66 +821,13 @@
     if (confirm(`確定要刪除 ${editingSeat} 號 在【${SEASONS[currentSeason]} ${wk}】的紀錄嗎？`)) {
       if (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat] && cloudDB[currentSeason][editingSeat][wk]) {
         delete cloudDB[currentSeason][editingSeat][wk];
-        localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
+        localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
         refreshUI();
         closeEditModal();
         await db.collection("running_records").doc("all_seasons").set(cloudDB);
       }
     }
   }
-
-  // ─── 強制搶救舊資料 ───
-  window.forceRescueLocalData = async function() {
-    let localPayload = {};
-    const keys = ['running_tracker_multi_term_db', 'running_tracker_db_57', 'running_records'];
-    
-    keys.forEach(k => {
-      const raw = localStorage.getItem(k);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (k === 'running_tracker_multi_term_db') {
-            localPayload = { ...localPayload, ...parsed };
-          } else {
-            if (!localPayload['autumn']) localPayload['autumn'] = {};
-            Object.keys(parsed).forEach(seat => {
-              localPayload['autumn'][seat] = parsed[seat];
-            });
-          }
-        } catch(e) {}
-      }
-    });
-
-    if (Object.keys(localPayload).length === 0) {
-      alert("此裝置未找到舊版本地暫存紀錄！\n請使用「當初登記圈數的那台設備」點擊此按鈕。");
-      return;
-    }
-
-    try {
-      document.getElementById('sync-status').textContent = '⏳ 上傳中...';
-      const docSnap = await db.collection("running_records").doc("all_seasons").get();
-      let finalMerged = docSnap.exists ? docSnap.data() : {};
-
-      ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
-        if (!finalMerged[seas]) finalMerged[seas] = {};
-        if (localPayload[seas]) {
-          Object.keys(localPayload[seas]).forEach(s => {
-            finalMerged[seas][s] = { ...finalMerged[seas][s], ...localPayload[seas][s] };
-          });
-        }
-      });
-
-      await db.collection("running_records").doc("all_seasons").set(finalMerged, { merge: true });
-      cloudDB = finalMerged;
-      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
-      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-      alert("🎉 搶救並同步成功！現在請用同事的手機重新整理，即可看到完整資料！");
-      refreshUI();
-    } catch(err) {
-      alert("同步失敗：" + err.message);
-      document.getElementById('sync-status').textContent = '🔴 上傳失敗';
-    }
-  };
 
   function exportTermCSV() {
     const currentSeasonDB = cloudDB[currentSeason] || {};
@@ -906,7 +894,7 @@
     link.click();
   }
 
-  // ─── 雲端即時監聽 ───
+  // ─── 雲端雙向合併監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
@@ -918,15 +906,43 @@
     refreshUI();
   });
 
-  db.collection("running_records").doc("all_seasons").onSnapshot((docSnap) => {
-    if (docSnap.exists) {
-      cloudDB = docSnap.data();
-      localStorage.setItem('cached_cloud_db', JSON.stringify(cloudDB));
-      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
-      refreshUI();
+  db.collection("running_records").doc("all_seasons").onSnapshot(async (docSnap) => {
+    let cloudData = docSnap.exists ? docSnap.data() : {};
+    let localData = loadAllHistoryLocalData();
+
+    // 智能雙向融合：本地有但雲端沒有的，自動補上傳；雲端有的自動拉下來
+    let needsUpload = false;
+    ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
+      if (!cloudData[seas]) cloudData[seas] = {};
+      if (localData[seas]) {
+        Object.keys(localData[seas]).forEach(seat => {
+          if (!cloudData[seas][seat]) {
+            cloudData[seas][seat] = localData[seas][seat];
+            needsUpload = true;
+          } else {
+            Object.keys(localData[seas][seat]).forEach(wk => {
+              if (cloudData[seas][seat][wk] === undefined) {
+                cloudData[seas][seat][wk] = localData[seas][seat][wk];
+                needsUpload = true;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    cloudDB = cloudData;
+    localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
+    document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+    refreshUI();
+
+    if (needsUpload) {
+      try {
+        await db.collection("running_records").doc("all_seasons").set(cloudDB, { merge: true });
+      } catch(e) {}
     }
   }, (err) => {
-    console.error("即時監聽中斷:", err);
+    console.warn("離線使用中:", err);
   });
 
   initWeekOptions();
