@@ -26,6 +26,9 @@
       padding: 6px 12px; border-radius: 8px; border: 1px solid #cbd5e0; font-size: 14px; background: #edf2f7; font-weight: 700;
     }
 
+    /* 連線狀態標籤 */
+    .sync-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 900; background: #c6f6d5; color: #22543d; }
+
     /* 計算機主體 */
     .calc-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .screen {
@@ -93,6 +96,99 @@
     .btn-group { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .btn-delete { background: #e53e3e; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; }
   </style>
+
+  <!-- 引入 Firebase SDK (已配置您的專屬金鑰) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteField } 
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
+      authDomain: "runn-b1d9d.firebaseapp.com",
+      projectId: "runn-b1d9d",
+      storageBucket: "runn-b1d9d.firebasestorage.app",
+      messagingSenderId: "771265714788",
+      appId: "1:771265714788:web:ce91cb04298c61fe8d9d71",
+      measurementId: "G-E1H3MDZY1C"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.db = db;
+    window.setDoc = setDoc;
+    window.doc = doc;
+    window.onSnapshot = onSnapshot;
+    window.updateDoc = updateDoc;
+    window.deleteField = deleteField;
+
+    // 監聽雲端開學日設定
+    onSnapshot(doc(db, "settings", "terms"), (docSnap) => {
+      if (docSnap.exists()) {
+        termSettings = docSnap.data();
+        localStorage.setItem('running_term_settings', JSON.stringify(termSettings));
+      }
+      autoDetected = detectCurrentSeasonAndWeek();
+      currentSeason = autoDetected.season;
+      initWeekOptions();
+      refreshUI();
+    });
+
+    // 監聽雲端圈數紀錄
+    onSnapshot(doc(db, "running_records", "all_seasons"), async (docSnap) => {
+      if (docSnap.exists()) {
+        cloudDB = docSnap.data();
+      } else {
+        cloudDB = {};
+      }
+      document.getElementById('sync-status').textContent = '🟢 雲端已同步';
+      
+      // 自動檢查是否有舊版 LocalStorage 資料需要搬移上雲端
+      await checkAndMigrateLocalData();
+      
+      refreshUI();
+    }, (error) => {
+      console.error(error);
+      document.getElementById('sync-status').textContent = '🔴 連線異常';
+    });
+
+    // ─── 舊資料自動補上傳功能 ───
+    async function checkAndMigrateLocalData() {
+      // 檢查舊版是否有資料
+      const oldMultiTerm = localStorage.getItem('running_tracker_multi_term_db');
+      const oldSingleTerm = localStorage.getItem('running_tracker_db_57') || localStorage.getItem('running_records');
+      
+      let uploadPayload = null;
+
+      if (oldMultiTerm) {
+        try {
+          const parsed = JSON.parse(oldMultiTerm);
+          if (Object.keys(parsed).length > 0) uploadPayload = parsed;
+        } catch(e) {}
+      } else if (oldSingleTerm) {
+        try {
+          const parsed = JSON.parse(oldSingleTerm);
+          if (Object.keys(parsed).length > 0) {
+            uploadPayload = { autumn: parsed };
+          }
+        } catch(e) {}
+      }
+
+      if (uploadPayload) {
+        try {
+          await setDoc(doc(db, "running_records", "all_seasons"), uploadPayload, { merge: true });
+          // 上傳成功後清空本地標記，避免重複上傳
+          localStorage.removeItem('running_tracker_multi_term_db');
+          localStorage.removeItem('running_tracker_db_57');
+          localStorage.removeItem('running_records');
+          console.log("舊資料已自動無痛同步至雲端！");
+        } catch (err) {
+          console.error("舊資料同步失敗:", err);
+        }
+      }
+    }
+  </script>
 </head>
 <body>
 
@@ -108,8 +204,9 @@
       </select>
       <select id="week-select" onchange="userChangeWeek()"></select>
     </div>
-    <div>
-      <button class="btn-sub" onclick="openSettingModal()">⚙️ 學季開學日</button>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span id="sync-status" class="sync-badge">🟡 連線中...</span>
+      <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
 
@@ -141,8 +238,7 @@
       <button class="num-btn" onclick="pressNum('0')">0</button>
       <button id="btn-hurt" class="btn-special" onclick="setSpecialStatus('傷')">傷</button>
       
-      <!-- C 按鈕改為 返回/重選 功能 -->
-      <button id="btn-cancel" class="btn-clear" onclick="handleCancelBtn()">返回</button>
+      <button id="btn-cancel" class="btn-clear" onclick="handleCancelBtn()">清除</button>
       <button class="btn-clear" onclick="backspace()">⌫</button>
       <button id="btn-action" class="btn-action" onclick="handleAction()">下一步 ➔ 輸入圈數</button>
     </div>
@@ -204,7 +300,7 @@
     </div>
     <div class="btn-group">
       <button class="btn-sub" onclick="closeSettingModal()">取消</button>
-      <button class="btn-export" onclick="saveSettings()">儲存並套用</button>
+      <button class="btn-export" onclick="saveSettings()">儲存並同步至雲端</button>
     </div>
   </div>
 </div>
@@ -288,7 +384,8 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  // 1. 設定與自然週算法
+  let cloudDB = {};
+
   function getTermSettings() {
     const saved = localStorage.getItem('running_term_settings');
     if (saved) return JSON.parse(saved);
@@ -300,10 +397,6 @@
         summer: "2027-05-17"
       }
     };
-  }
-
-  function saveTermSettingsData(settings) {
-    localStorage.setItem('running_term_settings', JSON.stringify(settings));
   }
 
   let termSettings = getTermSettings();
@@ -408,22 +501,12 @@
     activeWeek = weekSelect.value;
   }
 
-  // 2. 資料庫操作
-  function getFullDB() {
-    return JSON.parse(localStorage.getItem('running_tracker_multi_term_db') || '{}');
-  }
-  function saveFullDB(data) {
-    localStorage.setItem('running_tracker_multi_term_db', JSON.stringify(data));
-    refreshUI();
-  }
-
   function parseRecord(rec) {
     if (rec === undefined || rec === null) return { val: null, note: '' };
     if (typeof rec === 'object') return { val: rec.val, note: rec.note || '' };
     return { val: rec, note: '' };
   }
 
-  // 3. 計算機鍵盤操作
   function pressNum(num) {
     if (currentStep === 1) {
       if (currentSeat === '0') currentSeat = '';
@@ -449,13 +532,10 @@
     document.getElementById('screen-val').innerHTML = `<span style="color:#f6ad55;">【${type}】</span>`;
   }
 
-  // 返回重選／清空處理
   function handleCancelBtn() {
     if (currentStep === 2) {
-      // 步驟 2 按返回：直接回到步驟 1 重新選人
       resetToStepOne();
     } else {
-      // 步驟 1 按清除：清空目前打的座號
       currentSeat = '';
       document.getElementById('screen-val').innerHTML = `0 <span style="font-size:16px; color:#a0aec0;">號</span>`;
       document.getElementById('name-display').textContent = '';
@@ -476,10 +556,6 @@
     actionBtn.textContent = '下一步 ➔ 輸入圈數';
     actionBtn.style.background = '#3182ce';
     btnCancel.textContent = '清除';
-  }
-
-  function clearInput() {
-    handleCancelBtn();
   }
 
   function backspace() {
@@ -511,7 +587,7 @@
     handleAction();
   }
 
-  function handleAction() {
+  async function handleAction() {
     const statusText = document.getElementById('status-text');
     const actionBtn = document.getElementById('btn-action');
 
@@ -543,23 +619,28 @@
         recordValue = laps;
       }
 
-      const fullDB = getFullDB();
-      if (!fullDB[currentSeason]) fullDB[currentSeason] = {};
-      if (!fullDB[currentSeason][s]) fullDB[currentSeason][s] = {};
-      
-      const existing = parseRecord(fullDB[currentSeason][s][activeWeek]);
-      fullDB[currentSeason][s][activeWeek] = { val: recordValue, note: existing.note || '' };
-      saveFullDB(fullDB);
+      const existing = (cloudDB[currentSeason] && cloudDB[currentSeason][s]) 
+        ? parseRecord(cloudDB[currentSeason][s][activeWeek]) : { note: '' };
 
-      // 儲存完成後回到步驟 1
+      try {
+        await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+          [currentSeason]: {
+            [s]: {
+              [activeWeek]: { val: recordValue, note: existing.note || '' }
+            }
+          }
+        }, { merge: true });
+      } catch (err) {
+        alert('雲端儲存失敗，請檢查網路連線！');
+        console.error(err);
+      }
+
       resetToStepOne();
     }
   }
 
-  // 4. 渲染總表
   function refreshUI() {
-    const fullDB = getFullDB();
-    const currentSeasonDB = fullDB[currentSeason] || {};
+    const currentSeasonDB = cloudDB[currentSeason] || {};
     const missingContainer = document.getElementById('missing-list');
     const tableBody = document.getElementById('table-body');
     missingContainer.innerHTML = '';
@@ -584,7 +665,7 @@
 
       let annualTotalLaps = 0;
       ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
-        const sRecords = (fullDB[seas] && fullDB[seas][s]) ? fullDB[seas][s] : {};
+        const sRecords = (cloudDB[seas] && cloudDB[seas][s]) ? cloudDB[seas][s] : {};
         for (let w = 1; w <= TOTAL_WEEKS; w++) {
           const parsed = parseRecord(sRecords[`第 ${w} 週`]);
           if (typeof parsed.val === 'number') annualTotalLaps += parsed.val;
@@ -637,7 +718,6 @@
     }
   }
 
-  // 5. 開學日設定
   function openSettingModal() {
     document.getElementById('start-date-autumn').value = termSettings.startDates.autumn || '';
     document.getElementById('start-date-winter').value = termSettings.startDates.winter || '';
@@ -650,21 +730,20 @@
     document.getElementById('setting-modal').style.display = 'none';
   }
 
-  function saveSettings() {
+  async function saveSettings() {
     termSettings.startDates.autumn = document.getElementById('start-date-autumn').value;
     termSettings.startDates.winter = document.getElementById('start-date-winter').value;
     termSettings.startDates.spring = document.getElementById('start-date-spring').value;
     termSettings.startDates.summer = document.getElementById('start-date-summer').value;
-    saveTermSettingsData(termSettings);
-    closeSettingModal();
     
-    autoDetected = detectCurrentSeasonAndWeek();
-    currentSeason = autoDetected.season;
-    initWeekOptions();
-    refreshUI();
+    try {
+      await window.setDoc(window.doc(window.db, "settings", "terms"), termSettings);
+      closeSettingModal();
+    } catch (e) {
+      alert('儲存設定失敗，請檢查權限！');
+    }
   }
 
-  // 6. 修改與狀況補充
   function openEditModal(seat) {
     editingSeat = seat;
     document.getElementById('modal-student-info').textContent = `${seat} 號 ${STUDENT_MAP[seat]} (${SEASONS[currentSeason]})`;
@@ -678,39 +757,38 @@
     editingSeat = null;
   }
 
-  function batchSetAllWeeks(type) {
+  async function batchSetAllWeeks(type) {
     if (!editingSeat) return;
     const sName = STUDENT_MAP[editingSeat];
     if (confirm(`確定要將【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】的 1～10 週全設為「${type}」嗎？`)) {
-      const fullDB = getFullDB();
-      if (!fullDB[currentSeason]) fullDB[currentSeason] = {};
-      if (!fullDB[currentSeason][editingSeat]) fullDB[currentSeason][editingSeat] = {};
+      const weeksObj = {};
       for (let w = 1; w <= TOTAL_WEEKS; w++) {
-        fullDB[currentSeason][editingSeat][`第 ${w} 週`] = { val: type, note: '' };
+        weeksObj[`第 ${w} 週`] = { val: type, note: '' };
       }
-      saveFullDB(fullDB);
+      await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [currentSeason]: {
+          [editingSeat]: weeksObj
+        }
+      }, { merge: true });
       closeEditModal();
     }
   }
 
-  function batchClearAllWeeks() {
+  async function batchClearAllWeeks() {
     if (!editingSeat) return;
     const sName = STUDENT_MAP[editingSeat];
     if (confirm(`確定要清空【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】所有紀錄嗎？`)) {
-      const fullDB = getFullDB();
-      if (fullDB[currentSeason] && fullDB[currentSeason][editingSeat]) {
-        delete fullDB[currentSeason][editingSeat];
-        saveFullDB(fullDB);
-      }
+      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [`${currentSeason}.${editingSeat}`]: window.deleteField()
+      });
       closeEditModal();
     }
   }
 
   function onModalWeekChange() {
     if (!editingSeat) return;
-    const fullDB = getFullDB();
     const wk = modalWeekSelect.value;
-    const sData = (fullDB[currentSeason] && fullDB[currentSeason][editingSeat]) ? fullDB[currentSeason][editingSeat] : {};
+    const sData = (cloudDB[currentSeason] && cloudDB[currentSeason][editingSeat]) ? cloudDB[currentSeason][editingSeat] : {};
     const parsed = parseRecord(sData[wk]);
 
     const typeSelect = document.getElementById('modal-type-select');
@@ -735,16 +813,12 @@
     lapsInput.style.display = (type === 'laps') ? 'block' : 'none';
   }
 
-  function saveModalEdit() {
+  async function saveModalEdit() {
     if (!editingSeat) return;
-    const fullDB = getFullDB();
     const wk = modalWeekSelect.value;
     const type = document.getElementById('modal-type-select').value;
     const lapsInput = document.getElementById('modal-laps-input');
     const noteInput = document.getElementById('modal-note-input').value.trim();
-
-    if (!fullDB[currentSeason]) fullDB[currentSeason] = {};
-    if (!fullDB[currentSeason][editingSeat]) fullDB[currentSeason][editingSeat] = {};
 
     let finalVal = null;
     if (type === '假' || type === '傷') {
@@ -758,28 +832,30 @@
       finalVal = num;
     }
 
-    fullDB[currentSeason][editingSeat][wk] = { val: finalVal, note: noteInput };
-    saveFullDB(fullDB);
+    await window.setDoc(window.doc(window.db, "running_records", "all_seasons"), {
+      [currentSeason]: {
+        [editingSeat]: {
+          [wk]: { val: finalVal, note: noteInput }
+        }
+      }
+    }, { merge: true });
+
     closeEditModal();
   }
 
-  function deleteCurrentWeekRecord() {
+  async function deleteCurrentWeekRecord() {
     if (!editingSeat) return;
     const wk = modalWeekSelect.value;
     if (confirm(`確定要刪除 ${editingSeat} 號 在【${SEASONS[currentSeason]} ${wk}】的紀錄嗎？`)) {
-      const fullDB = getFullDB();
-      if (fullDB[currentSeason] && fullDB[currentSeason][editingSeat] && fullDB[currentSeason][editingSeat][wk] !== undefined) {
-        delete fullDB[currentSeason][editingSeat][wk];
-        saveFullDB(fullDB);
-      }
+      await window.updateDoc(window.doc(window.db, "running_records", "all_seasons"), {
+        [`${currentSeason}.${editingSeat}.${wk}`]: window.deleteField()
+      });
       closeEditModal();
     }
   }
 
-  // 7. 匯出 CSV
   function exportTermCSV() {
-    const fullDB = getFullDB();
-    const currentSeasonDB = fullDB[currentSeason] || {};
+    const currentSeasonDB = cloudDB[currentSeason] || {};
     let csv = `\uFEFF座號,姓名,${SEASONS[currentSeason]}當季總圈數`;
     for (let w = 1; w <= TOTAL_WEEKS; w++) csv += `,第${w}週`;
     csv += '\n';
@@ -814,7 +890,6 @@
   }
 
   function exportAnnualCSV() {
-    const fullDB = getFullDB();
     let csv = '\uFEFF座號,姓名,四季總累計,秋季累計,冬季累計,春季累計,夏季累計\n';
 
     STUDENT_LIST.forEach(student => {
@@ -824,7 +899,7 @@
       let annualTotal = 0;
 
       ['autumn', 'winter', 'spring', 'summer'].forEach(seas => {
-        const records = (fullDB[seas] && fullDB[seas][s]) ? fullDB[seas][s] : {};
+        const records = (cloudDB[seas] && cloudDB[seas][s]) ? cloudDB[seas][s] : {};
         for (let w = 1; w <= TOTAL_WEEKS; w++) {
           const parsed = parseRecord(records[`第 ${w} 週`]);
           if (typeof parsed.val === 'number') {
