@@ -68,6 +68,12 @@
     table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; white-space: nowrap; }
     th, td { padding: 9px 8px; border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; font-weight: 700; }
     th { background: #f7fafc; position: sticky; top: 0; color: #4a5568; z-index: 2; font-weight: 900; }
+    
+    /* 可排序表頭樣式 */
+    th.sortable { cursor: pointer; user-select: none; transition: background 0.15s; }
+    th.sortable:hover { background: #e2e8f0; }
+    th.sortable:active { background: #cbd5e0; }
+
     th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 1; }
     th.sticky-col-2, td.sticky-col-2 { position: sticky; left: 40px; background: #fff; z-index: 1; }
     th.sticky-col, th.sticky-col-2 { z-index: 3; background: #edf2f7; }
@@ -165,10 +171,10 @@
       <table>
         <thead>
           <tr id="table-head">
-            <th class="sticky-col">座號</th>
+            <th class="sticky-col sortable" onclick="toggleSort('seat')">座號 <span id="sort-seat-icon">▲</span></th>
             <th class="sticky-col-2">姓名</th>
-            <th style="color:#dd6b20;">當季加總</th>
-            <th style="color:#805ad5;">四季累計</th>
+            <th class="sortable" style="color:#dd6b20;" onclick="toggleSort('term')">當季加總 <span id="sort-term-icon"></span></th>
+            <th class="sortable" style="color:#805ad5;" onclick="toggleSort('annual')">四季累計 <span id="sort-annual-icon"></span></th>
             <th>操作</th>
           </tr>
         </thead>
@@ -294,6 +300,10 @@
 
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
+
+  // 排序狀態管理
+  let currentSortKey = 'seat'; // 'seat', 'term', 'annual'
+  let currentSortOrder = 'asc'; // 'asc' (小到大), 'desc' (大到小)
 
   function loadAllHistoryLocalData() {
     let result = {};
@@ -588,6 +598,31 @@
     }
   }
 
+  // ─── 排序切換處理 ───
+  function toggleSort(key) {
+    if (currentSortKey === key) {
+      currentSortOrder = (currentSortOrder === 'asc') ? 'desc' : 'asc';
+    } else {
+      currentSortKey = key;
+      // 點擊分數類預設從高到低，點擊座號預設從小到大
+      currentSortOrder = (key === 'seat') ? 'asc' : 'desc';
+    }
+    refreshUI();
+  }
+
+  function updateSortIcons() {
+    ['seat', 'term', 'annual'].forEach(k => {
+      const el = document.getElementById(`sort-${k}-icon`);
+      if (el) {
+        if (currentSortKey === k) {
+          el.textContent = (currentSortOrder === 'asc') ? '▲' : '▼';
+        } else {
+          el.textContent = '';
+        }
+      }
+    });
+  }
+
   function refreshUI() {
     const currentSeasonDB = cloudDB[currentSeason] || {};
     const missingContainer = document.getElementById('missing-list');
@@ -598,9 +633,12 @@
     document.getElementById('current-badge-label').textContent = `${SEASONS[currentSeason]} ${activeWeek}`;
     document.getElementById('report-title').textContent = `📋 ${SEASONS[currentSeason]} 圈數總表`;
 
+    updateSortIcons();
+
     let missingCount = 0;
 
-    STUDENT_LIST.forEach(student => {
+    // 1. 先計算每位同學的各項統計數據
+    const displayList = STUDENT_LIST.map(student => {
       const s = student.seat;
       const sName = student.name;
       const currentSeatRecords = currentSeasonDB[s] || {};
@@ -621,7 +659,40 @@
         }
       });
 
-      if (thisWeekRec.val === null) {
+      return {
+        seat: s,
+        name: sName,
+        termTotal: termTotalLaps,
+        annualTotal: annualTotalLaps,
+        thisWeekRec: thisWeekRec,
+        records: currentSeatRecords
+      };
+    });
+
+    // 2. 依照所選欄位排序
+    displayList.sort((a, b) => {
+      let valA, valB;
+      if (currentSortKey === 'term') {
+        valA = a.termTotal;
+        valB = b.termTotal;
+      } else if (currentSortKey === 'annual') {
+        valA = a.annualTotal;
+        valB = b.annualTotal;
+      } else {
+        valA = a.seat;
+        valB = b.seat;
+      }
+
+      if (valA === valB) return a.seat - b.seat; // 分數相同時依座號排序
+      return (currentSortOrder === 'asc') ? (valA - valB) : (valB - valA);
+    });
+
+    // 3. 渲染總表與未登記標籤
+    displayList.forEach(item => {
+      const s = item.seat;
+      const sName = item.name;
+
+      if (item.thisWeekRec.val === null) {
         missingCount++;
         const tag = document.createElement('div');
         tag.className = 'missing-tag';
@@ -646,15 +717,15 @@
 
       let weeksTdHtml = '';
       for (let w = 1; w <= TOTAL_WEEKS; w++) {
-        weeksTdHtml += `<td>${renderCell(currentSeatRecords[`第 ${w} 週`])}</td>`;
+        weeksTdHtml += `<td>${renderCell(item.records[`第 ${w} 週`])}</td>`;
       }
 
       const row = document.createElement('tr');
       row.innerHTML = `
         <td class="sticky-col"><strong>${s}</strong></td>
         <td class="sticky-col-2">${sName}</td>
-        <td class="term-total-col">${termTotalLaps}</td>
-        <td class="annual-total-col">${annualTotalLaps}</td>
+        <td class="term-total-col">${item.termTotal}</td>
+        <td class="annual-total-col">${item.annualTotal}</td>
         <td><button class="btn-edit" onclick="openEditModal(${s})">修改</button></td>
         ${weeksTdHtml}
       `;
@@ -706,7 +777,6 @@
     editingSeat = null;
   }
 
-  // ─── 修正：一鍵填寫 10 週的雲端寫入 ───
   async function batchSetAllWeeks(type) {
     if (!editingSeat) return;
     const sName = STUDENT_MAP[editingSeat];
@@ -914,7 +984,7 @@
     link.click();
   }
 
-  // ─── 雲端雙向監聽 ───
+  // ─── 雲端即時雙向監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
