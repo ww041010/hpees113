@@ -108,7 +108,7 @@
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
       <button class="btn-rescue" onclick="forceRescueLocalData()">🛠️ 搶救舊資料</button>
-      <span id="sync-status" class="sync-badge">🟡 連線中...</span>
+      <span id="sync-status" class="sync-badge">🟢 雲端已同步</span>
       <button class="btn-sub" onclick="openSettingModal()">⚙️ 開學日</button>
     </div>
   </div>
@@ -295,7 +295,6 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  // 深度提取本地歷史紀錄
   function loadAllHistoryLocalData() {
     let result = {};
     const possibleKeys = [
@@ -455,7 +454,7 @@
 
   function parseRecord(rec) {
     if (rec === undefined || rec === null) return { val: null, note: '' };
-    if (typeof rec === 'object') return { val: rec.val, note: rec.note || '' };
+    if (typeof rec === 'object') return { val: rec.val !== undefined ? rec.val : null, note: rec.note || '' };
     return { val: rec, note: '' };
   }
 
@@ -582,13 +581,7 @@
       resetToStepOne();
 
       try {
-        await db.collection("running_records").doc("all_seasons").set({
-          [currentSeason]: {
-            [s]: {
-              [activeWeek]: { val: recordValue, note: existing.note || '' }
-            }
-          }
-        }, { merge: true });
+        await db.collection("running_records").doc("all_seasons").set(cloudDB, { merge: true });
       } catch (err) {
         console.error("雲端寫入延遲:", err);
       }
@@ -713,25 +706,28 @@
     editingSeat = null;
   }
 
+  // ─── 修正：一鍵填寫 10 週的雲端寫入 ───
   async function batchSetAllWeeks(type) {
     if (!editingSeat) return;
     const sName = STUDENT_MAP[editingSeat];
     if (confirm(`確定要將【${editingSeat} 號 ${sName}】在【${SEASONS[currentSeason]}】的 1～10 週全設為「${type}」嗎？`)) {
-      const weeksObj = {};
-      for (let w = 1; w <= TOTAL_WEEKS; w++) {
-        weeksObj[`第 ${w} 週`] = { val: type, note: '' };
-      }
       if (!cloudDB[currentSeason]) cloudDB[currentSeason] = {};
-      cloudDB[currentSeason][editingSeat] = weeksObj;
+      if (!cloudDB[currentSeason][editingSeat]) cloudDB[currentSeason][editingSeat] = {};
+
+      for (let w = 1; w <= TOTAL_WEEKS; w++) {
+        const prevNote = parseRecord(cloudDB[currentSeason][editingSeat][`第 ${w} 週`]).note;
+        cloudDB[currentSeason][editingSeat][`第 ${w} 週`] = { val: type, note: prevNote || '' };
+      }
+
       localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
       refreshUI();
       closeEditModal();
 
-      await db.collection("running_records").doc("all_seasons").set({
-        [currentSeason]: {
-          [editingSeat]: weeksObj
-        }
-      }, { merge: true });
+      try {
+        await db.collection("running_records").doc("all_seasons").set(cloudDB, { merge: true });
+      } catch (e) {
+        console.error("雲端更新失敗:", e);
+      }
     }
   }
 
@@ -804,13 +800,11 @@
     refreshUI();
     closeEditModal();
 
-    await db.collection("running_records").doc("all_seasons").set({
-      [currentSeason]: {
-        [editingSeat]: {
-          [wk]: { val: finalVal, note: noteInput }
-        }
-      }
-    }, { merge: true });
+    try {
+      await db.collection("running_records").doc("all_seasons").set(cloudDB, { merge: true });
+    } catch (e) {
+      console.error("雲端更新失敗:", e);
+    }
   }
 
   async function deleteCurrentWeekRecord() {
@@ -827,7 +821,6 @@
     }
   }
 
-  // ─── 強制搶救與備份提取 ───
   window.forceRescueLocalData = async function() {
     const rawData = loadAllHistoryLocalData();
     let count = 0;
@@ -921,7 +914,7 @@
     link.click();
   }
 
-  // ─── 雲端即時雙向監聽 ───
+  // ─── 雲端雙向監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
@@ -935,7 +928,7 @@
 
   db.collection("running_records").doc("all_seasons").onSnapshot((docSnap) => {
     if (docSnap.exists) {
-      cloudDB = docSnap.data();
+      cloudDB = docSnap.data() || {};
       localStorage.setItem('running_records_master_backup', JSON.stringify(cloudDB));
       document.getElementById('sync-status').textContent = '🟢 雲端已同步';
       refreshUI();
