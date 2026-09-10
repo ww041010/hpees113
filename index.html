@@ -59,12 +59,23 @@
     }
     .missing-tag:hover { background: #edf2f7; border-color: #a0aec0; }
 
+    /* 老師總表卡片 */
     .report-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-    .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
+    .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
     .report-header h2 { font-size: 16px; margin: 0; color: #2d3748; font-weight: 900; }
     .btn-export { background: #38a169; color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 700; }
+
+    /* 總表頂部平均數快速預覽看板 */
+    .avg-summary-bar {
+      display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .avg-stat-card {
+      flex: 1; min-width: 140px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px;
+    }
+    .avg-stat-title { font-size: 11px; font-weight: 900; color: #718096; }
+    .avg-stat-val { font-size: 20px; font-weight: 900; }
     
-    .table-box { overflow-x: auto; max-height: 480px; border: 1px solid #e2e8f0; border-radius: 10px; }
+    .table-box { overflow-x: auto; max-height: 520px; border: 1px solid #e2e8f0; border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; white-space: nowrap; }
     th, td { padding: 9px 8px; border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; font-weight: 700; }
     th { background: #f7fafc; position: sticky; top: 0; color: #4a5568; z-index: 2; font-weight: 900; }
@@ -77,6 +88,12 @@
     th.sticky-col, td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 1; }
     th.sticky-col-2, td.sticky-col-2 { position: sticky; left: 40px; background: #fff; z-index: 1; }
     th.sticky-col, th.sticky-col-2 { z-index: 3; background: #edf2f7; }
+
+    /* 置頂平均列高亮樣式 */
+    tr.avg-top-row { background: #ebf8ff; border-bottom: 2px solid #bee3f8; }
+    tr.avg-top-row td { color: #2b6cb0; font-weight: 900; }
+    tr.avg-top-row td.sticky-col, tr.avg-top-row td.sticky-col-2 { background: #e6fffa; z-index: 2; }
+    .avg-subtext { font-size: 10px; color: #718096; font-weight: 700; display: block; }
     
     .status-leave { color: #d69e2e; font-weight: 900; background: #fefcbf; padding: 2px 6px; border-radius: 6px; }
     .status-hurt { color: #e53e3e; font-weight: 900; background: #fed7d7; padding: 2px 6px; border-radius: 6px; }
@@ -167,6 +184,19 @@
         <button class="btn-export" style="background:#805ad5;" onclick="exportAnnualCSV()">匯出四季總成績</button>
       </div>
     </div>
+
+    <!-- 頂部常駐全班平均大字卡 -->
+    <div class="avg-summary-bar">
+      <div class="avg-stat-card">
+        <span class="avg-stat-title">🍂 當季全班人均圈數</span>
+        <span id="stat-term-avg" class="avg-stat-val" style="color:#dd6b20;">0.0 圈</span>
+      </div>
+      <div class="avg-stat-card">
+        <span class="avg-stat-title">👑 四季全年度人均累計</span>
+        <span id="stat-annual-avg" class="avg-stat-val" style="color:#805ad5;">0.0 圈</span>
+      </div>
+    </div>
+
     <div class="table-box">
       <table>
         <thead>
@@ -301,9 +331,8 @@
   const STUDENT_MAP = {};
   STUDENT_LIST.forEach(s => { STUDENT_MAP[s.seat] = s.name; });
 
-  // 排序狀態管理
-  let currentSortKey = 'seat'; // 'seat', 'term', 'annual'
-  let currentSortOrder = 'asc'; // 'asc' (小到大), 'desc' (大到小)
+  let currentSortKey = 'seat';
+  let currentSortOrder = 'asc';
 
   function loadAllHistoryLocalData() {
     let result = {};
@@ -598,13 +627,11 @@
     }
   }
 
-  // ─── 排序切換處理 ───
   function toggleSort(key) {
     if (currentSortKey === key) {
       currentSortOrder = (currentSortOrder === 'asc') ? 'desc' : 'asc';
     } else {
       currentSortKey = key;
-      // 點擊分數類預設從高到低，點擊座號預設從小到大
       currentSortOrder = (key === 'seat') ? 'asc' : 'desc';
     }
     refreshUI();
@@ -636,8 +663,13 @@
     updateSortIcons();
 
     let missingCount = 0;
+    let sumTermAllStudents = 0;
+    let sumAnnualAllStudents = 0;
+    
+    // 累計各週有跑圈的總圈數與人數
+    const weekSums = Array(TOTAL_WEEKS + 1).fill(0);
+    const weekCounts = Array(TOTAL_WEEKS + 1).fill(0);
 
-    // 1. 先計算每位同學的各項統計數據
     const displayList = STUDENT_LIST.map(student => {
       const s = student.seat;
       const sName = student.name;
@@ -647,7 +679,11 @@
       let termTotalLaps = 0;
       for (let w = 1; w <= TOTAL_WEEKS; w++) {
         const parsed = parseRecord(currentSeatRecords[`第 ${w} 週`]);
-        if (typeof parsed.val === 'number') termTotalLaps += parsed.val;
+        if (typeof parsed.val === 'number') {
+          termTotalLaps += parsed.val;
+          weekSums[w] += parsed.val;
+          weekCounts[w] += 1;
+        }
       }
 
       let annualTotalLaps = 0;
@@ -659,6 +695,9 @@
         }
       });
 
+      sumTermAllStudents += termTotalLaps;
+      sumAnnualAllStudents += annualTotalLaps;
+
       return {
         seat: s,
         name: sName,
@@ -669,7 +708,44 @@
       };
     });
 
-    // 2. 依照所選欄位排序
+    // 計算平均值
+    const totalStudents = STUDENT_LIST.length || 57;
+    const avgTerm = (sumTermAllStudents / totalStudents).toFixed(1);
+    const avgAnnual = (sumAnnualAllStudents / totalStudents).toFixed(1);
+
+    // 更新頂部平均快速看板
+    document.getElementById('stat-term-avg').textContent = `${avgTerm} 圈`;
+    document.getElementById('stat-annual-avg').textContent = `${avgAnnual} 圈`;
+
+    // ─── 關鍵更新：在表格第 1 列直接置頂插入「全班平均」行 ───
+    let weeksAvgTdHtml = '';
+    for (let w = 1; w <= TOTAL_WEEKS; w++) {
+      if (weekCounts[w] > 0) {
+        const avgW = (weekSums[w] / weekCounts[w]).toFixed(1);
+        weeksAvgTdHtml += `
+          <td>
+            <span style="color:#2b6cb0; font-weight:900;">${avgW}</span>
+            <span class="avg-subtext">${weekCounts[w]}人</span>
+          </td>
+        `;
+      } else {
+        weeksAvgTdHtml += `<td><span style="color:#a0aec0;">-</span></td>`;
+      }
+    }
+
+    const avgTopRow = document.createElement('tr');
+    avgTopRow.className = 'avg-top-row';
+    avgTopRow.innerHTML = `
+      <td class="sticky-col">📊</td>
+      <td class="sticky-col-2"><strong>平均</strong></td>
+      <td class="term-total-col" style="font-size:15px; color:#c05621;">${avgTerm}</td>
+      <td class="annual-total-col" style="font-size:15px; color:#6b46c1;">${avgAnnual}</td>
+      <td style="color:#4a5568; font-size:11px; font-weight:900;">全班均值</td>
+      ${weeksAvgTdHtml}
+    `;
+    tableBody.appendChild(avgTopRow);
+
+    // 依照排序規則排列學生名單
     displayList.sort((a, b) => {
       let valA, valB;
       if (currentSortKey === 'term') {
@@ -683,11 +759,11 @@
         valB = b.seat;
       }
 
-      if (valA === valB) return a.seat - b.seat; // 分數相同時依座號排序
+      if (valA === valB) return a.seat - b.seat;
       return (currentSortOrder === 'asc') ? (valA - valB) : (valB - valA);
     });
 
-    // 3. 渲染總表與未登記標籤
+    // 渲染學生行
     displayList.forEach(item => {
       const s = item.seat;
       const sName = item.name;
@@ -925,6 +1001,10 @@
     for (let w = 1; w <= TOTAL_WEEKS; w++) csv += `,第${w}週`;
     csv += '\n';
 
+    let sumTerm = 0;
+    const weekSums = Array(TOTAL_WEEKS + 1).fill(0);
+    const weekCounts = Array(TOTAL_WEEKS + 1).fill(0);
+
     STUDENT_LIST.forEach(student => {
       const s = student.seat;
       const sName = student.name;
@@ -936,6 +1016,8 @@
         const parsed = parseRecord(seatRecords[`第 ${w} 週`]);
         if (typeof parsed.val === 'number') {
           termTotalLaps += parsed.val;
+          weekSums[w] += parsed.val;
+          weekCounts[w] += 1;
           weekDetails.push(parsed.note ? `${parsed.val}圈(${parsed.note})` : `${parsed.val}圈`);
         } else if (parsed.val) {
           weekDetails.push(parsed.note ? `${parsed.val}(${parsed.note})` : `${parsed.val}`);
@@ -944,8 +1026,17 @@
         }
       }
 
+      sumTerm += termTotalLaps;
       csv += `${s},${sName},${termTotalLaps},${weekDetails.join(',')}\n`;
     });
+
+    const totalStudents = STUDENT_LIST.length || 57;
+    const avgTerm = (sumTerm / totalStudents).toFixed(1);
+    let avgWeeks = [];
+    for (let w = 1; w <= TOTAL_WEEKS; w++) {
+      avgWeeks.push(weekCounts[w] > 0 ? (weekSums[w] / weekCounts[w]).toFixed(1) : '-');
+    }
+    csv += `-,全班平均,${avgTerm},${avgWeeks.join(',')}\n`;
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -956,6 +1047,8 @@
 
   function exportAnnualCSV() {
     let csv = '\uFEFF座號,姓名,四季總累計,秋季累計,冬季累計,春季累計,夏季累計\n';
+    let totalAnnualSum = 0;
+    const termSumsTotal = { autumn: 0, winter: 0, spring: 0, summer: 0 };
 
     STUDENT_LIST.forEach(student => {
       const s = student.seat;
@@ -972,10 +1065,21 @@
             annualTotal += parsed.val;
           }
         }
+        termSumsTotal[seas] += termSums[seas];
       });
 
+      totalAnnualSum += annualTotal;
       csv += `${s},${sName},${annualTotal},${termSums.autumn},${termSums.winter},${termSums.spring},${termSums.summer}\n`;
     });
+
+    const totalStudents = STUDENT_LIST.length || 57;
+    const avgAnnual = (totalAnnualSum / totalStudents).toFixed(1);
+    const avgAutumn = (termSumsTotal.autumn / totalStudents).toFixed(1);
+    const avgWinter = (termSumsTotal.winter / totalStudents).toFixed(1);
+    const avgSpring = (termSumsTotal.spring / totalStudents).toFixed(1);
+    const avgSummer = (termSumsTotal.summer / totalStudents).toFixed(1);
+
+    csv += `-,全班平均,${avgAnnual},${avgAutumn},${avgWinter},${avgSpring},${avgSummer}\n`;
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -984,7 +1088,7 @@
     link.click();
   }
 
-  // ─── 雲端即時雙向監聽 ───
+  // ─── 雲端雙向監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
