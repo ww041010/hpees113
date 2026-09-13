@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>體育圈數登記系統</title>
   
-  <!-- 引入 Google 粉圓體 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
 
-  <!-- 引入穩定相容版 Firebase CDN -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
@@ -47,6 +45,8 @@
     button.num-btn:active { background: #e2e8f0; transform: scale(0.96); }
     button.btn-special { background: #feebc8; color: #c05621; font-size: 18px; font-weight: 900; }
     button.btn-special:active { background: #fbd38d; transform: scale(0.96); }
+    button.btn-special-que { background: #e2e8f0; color: #4a5568; font-size: 18px; font-weight: 900; }
+    button.btn-special-que:active { background: #cbd5e0; transform: scale(0.96); }
     button.btn-action { background: #3182ce; color: #fff; font-size: 18px; font-weight: 900; grid-column: span 3; margin-top: 4px; }
     button.btn-clear { background: #fed7d7; color: #9b2c2c; font-size: 17px; font-weight: 900; }
     button.btn-clear:active { background: #feb2b2; transform: scale(0.96); }
@@ -59,19 +59,13 @@
     }
     .missing-tag:hover { background: #edf2f7; border-color: #a0aec0; }
 
-    /* 老師總表卡片 */
     .report-card { background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
     .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
     .report-header h2 { font-size: 16px; margin: 0; color: #2d3748; font-weight: 900; }
     .btn-export { background: #38a169; color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 700; }
 
-    /* 總表頂部平均數快速預覽看板 */
-    .avg-summary-bar {
-      display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
-    }
-    .avg-stat-card {
-      flex: 1; min-width: 140px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px;
-    }
+    .avg-summary-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .avg-stat-card { flex: 1; min-width: 140px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
     .avg-stat-title { font-size: 11px; font-weight: 900; color: #718096; }
     .avg-stat-val { font-size: 20px; font-weight: 900; }
     
@@ -80,7 +74,6 @@
     th, td { padding: 9px 8px; border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; font-weight: 700; }
     th { background: #f7fafc; position: sticky; top: 0; color: #4a5568; z-index: 2; font-weight: 900; }
     
-    /* 可排序表頭樣式 */
     th.sortable { cursor: pointer; user-select: none; transition: background 0.15s; }
     th.sortable:hover { background: #e2e8f0; }
     th.sortable:active { background: #cbd5e0; }
@@ -89,7 +82,6 @@
     th.sticky-col-2, td.sticky-col-2 { position: sticky; left: 40px; background: #fff; z-index: 1; }
     th.sticky-col, th.sticky-col-2 { z-index: 3; background: #edf2f7; }
 
-    /* 置頂平均列高亮樣式 */
     tr.avg-top-row { background: #ebf8ff; border-bottom: 2px solid #bee3f8; }
     tr.avg-top-row td { color: #2b6cb0; font-weight: 900; }
     tr.avg-top-row td.sticky-col, tr.avg-top-row td.sticky-col-2 { background: #e6fffa; z-index: 2; }
@@ -97,6 +89,7 @@
     
     .status-leave { color: #d69e2e; font-weight: 900; background: #fefcbf; padding: 2px 6px; border-radius: 6px; }
     .status-hurt { color: #e53e3e; font-weight: 900; background: #fed7d7; padding: 2px 6px; border-radius: 6px; }
+    .status-que { color: #4a5568; font-weight: 900; background: #e2e8f0; padding: 2px 6px; border-radius: 6px; }
     .term-total-col { font-weight: 900; color: #dd6b20; font-size: 14px; }
     .annual-total-col { font-weight: 900; color: #805ad5; font-size: 14px; background: #faf5ff; }
     .btn-edit { background: #edf2f7; border: 1px solid #cbd5e0; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; }
@@ -162,9 +155,11 @@
       <button id="btn-leave" class="btn-special" onclick="setSpecialStatus('假')">假</button>
       <button class="num-btn" onclick="pressNum('0')">0</button>
       <button id="btn-hurt" class="btn-special" onclick="setSpecialStatus('傷')">傷</button>
-      
+
+      <button id="btn-que" class="btn-special-que" onclick="setSpecialStatus('缺')">缺</button>
       <button id="btn-cancel" class="btn-clear" onclick="handleCancelBtn()">清除</button>
       <button class="btn-clear" onclick="backspace()">⌫</button>
+
       <button id="btn-action" class="btn-action" onclick="handleAction()">下一步 ➔ 輸入圈數</button>
     </div>
   </div>
@@ -185,7 +180,6 @@
       </div>
     </div>
 
-    <!-- 頂部常駐全班平均大字卡 -->
     <div class="avg-summary-bar">
       <div class="avg-stat-card">
         <span class="avg-stat-title">🍂 當季全班人均圈數</span>
@@ -253,6 +247,7 @@
       <div style="display: flex; gap: 6px; flex-wrap: wrap;">
         <button class="quick-btn" style="color:#c05621; border-color:#fbd38d;" onclick="batchSetAllWeeks('假')">🏖️ 10週皆請假</button>
         <button class="quick-btn" style="color:#c53030; border-color:#feb2b2;" onclick="batchSetAllWeeks('傷')">🩹 10週皆受傷</button>
+        <button class="quick-btn" style="color:#4a5568; border-color:#cbd5e0;" onclick="batchSetAllWeeks('缺')">❓ 10週皆缺報</button>
         <button class="quick-btn" style="color:#718096;" onclick="batchClearAllWeeks()">🧹 清空當季</button>
       </div>
     </div>
@@ -267,13 +262,14 @@
         <option value="laps">正常跑圈</option>
         <option value="假">請假 (假)</option>
         <option value="傷">受傷 (傷)</option>
+        <option value="缺">缺報 (缺)</option>
       </select>
       <input type="number" id="modal-laps-input" placeholder="輸入圈數" min="0" style="margin-top: 6px;">
     </div>
     
     <div class="modal-field">
       <label>📝 狀況補充／備註：</label>
-      <input type="text" id="modal-note-input" placeholder="例如：右腳踝微扭、公假出賽、慢走2圈等">
+      <input type="text" id="modal-note-input" placeholder="例如：右腳踝微扭、公假出賽、忘記報圈數等">
     </div>
 
     <div class="btn-group">
@@ -285,7 +281,6 @@
 </div>
 
 <script>
-  // ─── 1. 初始化 Firebase ───
   const firebaseConfig = {
     apiKey: "AIzaSyCmKa2t7OZQgZaGSzSauqF5W6X7uLc1Gbs",
     authDomain: "runn-b1d9d.firebaseapp.com",
@@ -555,7 +550,7 @@
       document.getElementById('screen-val').innerHTML = `${currentSeat || '0'} <span style="font-size:16px; color:#a0aec0;">號</span>`;
       document.getElementById('name-display').textContent = STUDENT_MAP[sNum] || '';
     } else {
-      currentVal = (currentStatus === '假' || currentStatus === '傷') ? '' : currentVal.slice(0, -1);
+      currentVal = (currentStatus === '假' || currentStatus === '傷' || currentStatus === '缺') ? '' : currentVal.slice(0, -1);
       document.getElementById('screen-val').innerHTML = `${currentVal || '0'} <span style="font-size:16px; color:#a0aec0;">圈</span>`;
     }
   }
@@ -598,12 +593,12 @@
       const s = parseInt(currentSeat, 10);
       let recordValue = null;
 
-      if (currentStatus === '假' || currentStatus === '傷') {
+      if (currentStatus === '假' || currentStatus === '傷' || currentStatus === '缺') {
         recordValue = currentStatus;
       } else {
         const laps = parseInt(currentVal, 10);
         if (isNaN(laps) || laps < 0) {
-          alert('請輸入圈數或選擇 [假/傷]！');
+          alert('請輸入圈數或選擇 [假/傷/缺]！');
           return;
         }
         recordValue = laps;
@@ -666,7 +661,6 @@
     let sumTermAllStudents = 0;
     let sumAnnualAllStudents = 0;
     
-    // 累計各週有跑圈的總圈數與人數
     const weekSums = Array(TOTAL_WEEKS + 1).fill(0);
     const weekCounts = Array(TOTAL_WEEKS + 1).fill(0);
 
@@ -708,16 +702,13 @@
       };
     });
 
-    // 計算平均值
     const totalStudents = STUDENT_LIST.length || 57;
     const avgTerm = (sumTermAllStudents / totalStudents).toFixed(1);
     const avgAnnual = (sumAnnualAllStudents / totalStudents).toFixed(1);
 
-    // 更新頂部平均快速看板
     document.getElementById('stat-term-avg').textContent = `${avgTerm} 圈`;
     document.getElementById('stat-annual-avg').textContent = `${avgAnnual} 圈`;
 
-    // ─── 關鍵更新：在表格第 1 列直接置頂插入「全班平均」行 ───
     let weeksAvgTdHtml = '';
     for (let w = 1; w <= TOTAL_WEEKS; w++) {
       if (weekCounts[w] > 0) {
@@ -745,7 +736,6 @@
     `;
     tableBody.appendChild(avgTopRow);
 
-    // 依照排序規則排列學生名單
     displayList.sort((a, b) => {
       let valA, valB;
       if (currentSortKey === 'term') {
@@ -763,7 +753,6 @@
       return (currentSortOrder === 'asc') ? (valA - valB) : (valB - valA);
     });
 
-    // 渲染學生行
     displayList.forEach(item => {
       const s = item.seat;
       const sName = item.name;
@@ -783,6 +772,7 @@
         let mainText = '';
         if (parsed.val === '假') mainText = '<span class="status-leave">假</span>';
         else if (parsed.val === '傷') mainText = '<span class="status-hurt">傷</span>';
+        else if (parsed.val === '缺') mainText = '<span class="status-que">缺</span>';
         else if (typeof parsed.val === 'number') mainText = `<span style="font-weight:900; color:#2b6cb0;">${parsed.val}</span>`;
         
         if (parsed.note) {
@@ -903,7 +893,7 @@
 
     noteInput.value = parsed.note || '';
 
-    if (parsed.val === '假' || parsed.val === '傷') {
+    if (parsed.val === '假' || parsed.val === '傷' || parsed.val === '缺') {
       typeSelect.value = parsed.val;
       lapsInput.style.display = 'none';
     } else {
@@ -927,7 +917,7 @@
     const noteInput = document.getElementById('modal-note-input').value.trim();
 
     let finalVal = null;
-    if (type === '假' || type === '傷') {
+    if (type === '假' || type === '傷' || type === '缺') {
       finalVal = type;
     } else {
       const num = parseInt(lapsInput.value, 10);
@@ -1088,7 +1078,6 @@
     link.click();
   }
 
-  // ─── 雲端雙向監聽 ───
   db.collection("settings").doc("terms").onSnapshot((docSnap) => {
     if (docSnap.exists) {
       termSettings = docSnap.data();
